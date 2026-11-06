@@ -11,7 +11,7 @@ renderer.setClearColor(0x000000, 0);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(42, 1, .1, 500);
-camera.position.set(26, 66, 75);
+camera.position.set(26, 66, 75).multiplyScalar(stage.clientWidth < 700 ? 1.35 : 1);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.dampingFactor = .09; controls.minDistance = 15; controls.maxDistance = 190; controls.maxPolarAngle = Math.PI / 2 - .06;
 controls.target.set(0, 0, 0); controls.update(); controls.saveState();
