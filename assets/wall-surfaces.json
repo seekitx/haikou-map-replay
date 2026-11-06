@@ -1,0 +1,13 @@
+{
+  "resolution_m": 0.05,
+  "threshold_gray_below": 105,
+  "min_component_pixels": 3,
+  "closing_radius_m": 0.15,
+  "outline_simplification_m": 0.1,
+  "display_height_m": 0.8,
+  "surface_count": 298,
+  "triangle_count": 5469,
+  "detected_pixels": 16634,
+  "filtered_pixels": 509,
+  "closing_added_pixels": 2721
+}

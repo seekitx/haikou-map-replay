@@ -53,14 +53,17 @@ image.onload = () => {
   const stride=4, cells=[];
   for(let y=0;y<data.height;y+=stride)for(let x=0;x<data.width;x+=stride){let min=255;for(let oy=0;oy<stride&&y+oy<data.height;oy++)for(let ox=0;ox<stride&&x+ox<data.width;ox++)min=Math.min(min,raw[((y+oy)*data.width+x+ox)*4]);if(min<78)cells.push([x,y]);}
   originalWalls=buildInstances(cells,stride,false,0x6eb38b);scene.add(originalWalls);
-  const enhancedImage=new Image();
-  enhancedImage.onload=()=>{
-    const c=document.createElement('canvas');c.width=enhancedImage.width;c.height=enhancedImage.height;const cc=c.getContext('2d',{willReadFrequently:true});cc.drawImage(enhancedImage,0,0);const mask=cc.getImageData(0,0,c.width,c.height).data;
-    const observed=[],inferred=[];for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++){let v=mask[(y*c.width+x)*4];if(v===128)observed.push([x*2,y*2]);else if(v===255)inferred.push([x*2,y*2]);}
-    enhancedWalls=new THREE.Group();enhancedWalls.add(buildInstances(observed,2,true,0x78bb93));enhancedWalls.add(buildInstances(inferred,2,true,0xd9ba71));scene.add(enhancedWalls);showWallMode(wallMode);
-  };
-  enhancedImage.onerror=()=>{showWallMode('original');$('error').hidden=false;$('error').textContent='补偿墙体加载失败，已显示原始墙体。'};
-  enhancedImage.src='assets/walls-enhanced.png';
+  // Contours are joined into one continuous display mesh; the source raster remains unchanged.
+  fetch('assets/wall-surfaces.bin?v=20261106-smooth2')
+    .then(response=>{if(!response.ok)throw new Error('Could not load wall surfaces');return response.arrayBuffer()})
+    .then(buffer=>{
+      const points=new Float32Array(buffer);if(points.length===0||points.length%9!==0)throw new Error('Invalid wall surface data');
+      const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(points,3));geometry.computeVertexNormals();geometry.computeBoundingSphere();
+      enhancedWalls=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:0x84c89d,roughness:.85,metalness:.02,side:THREE.DoubleSide}));
+      enhancedWalls.name='continuous-display-walls';scene.add(enhancedWalls);showWallMode(wallMode);
+    })
+    .catch(()=>{showWallMode('original');$('error').hidden=false;$('error').textContent='连续墙面加载失败，已显示原始墙体。'});
+
 
 };
 image.onerror=()=>{$('error').hidden=false;$('error').textContent='地图数据加载失败，请刷新页面。'};
