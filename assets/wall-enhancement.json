@@ -1,0 +1,13 @@
+{
+  "cell_m": 0.1,
+  "grid_width": 540,
+  "grid_height": 674,
+  "occupancy_threshold": 78,
+  "min_component_cells": 3,
+  "closing_radius_cells": 1,
+  "gaussian_sigma_cells": 0.45,
+  "source_cells": 3745,
+  "removed_small_cells": 263,
+  "added_cells": 149,
+  "result_cells": 3631
+}

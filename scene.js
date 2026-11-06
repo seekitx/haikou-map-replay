@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 const $ = id => document.getElementById(id);
 const data = window.MAP_DATA;
 const stage = $('stage');
@@ -28,6 +29,9 @@ const playedGeometry = pathGeometry.clone(); playedGeometry.setDrawRange(0, 1);
 const playedLine = new THREE.Line(playedGeometry, new THREE.LineBasicMaterial({color: 0xb4ff77})); scene.add(playedLine);
 const robot = new THREE.Group(); const ball = new THREE.Mesh(new THREE.SphereGeometry(.32, 16, 12), new THREE.MeshBasicMaterial({color: 0xd9ffb4})); robot.add(ball);
 const ring = new THREE.Mesh(new THREE.RingGeometry(.50,.65,32), new THREE.MeshBasicMaterial({color:0xa9ff79,transparent:true,opacity:.6,side:THREE.DoubleSide})); ring.rotation.x=-Math.PI/2; ring.position.y=-.19; robot.add(ring); scene.add(robot);
+let originalWalls, enhancedWalls; let wallMode = 'enhanced';
+function showWallMode(mode){if(mode==='enhanced'&&!enhancedWalls)return;wallMode=mode;if(originalWalls)originalWalls.visible=mode==='original';if(enhancedWalls)enhancedWalls.visible=mode==='enhanced';$('wall-enhanced').setAttribute('aria-pressed',String(mode==='enhanced'));$('wall-original').setAttribute('aria-pressed',String(mode==='original'));$('wall-key').hidden=mode!=='enhanced'}
+$('wall-enhanced').onclick=()=>showWallMode('enhanced');$('wall-original').onclick=()=>showWallMode('original');
 const image = new Image();
 image.onload = () => {
   const source = document.createElement('canvas'); source.width = data.width; source.height = data.height;
@@ -37,13 +41,27 @@ image.onload = () => {
   ctx.putImageData(floor,0,0);
   const texture = new THREE.CanvasTexture(source); texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
   const plane = new THREE.Mesh(new THREE.PlaneGeometry(width,height),new THREE.MeshBasicMaterial({map:texture,transparent:true,depthWrite:false,side:THREE.DoubleSide}));plane.rotation.x=-Math.PI/2;plane.position.y=0;scene.add(plane);
-  // Low blocks make occupied grid contours visible. Their heights are illustrative.
+  // Retain the unmodified obstacle view for comparison.
+  function buildInstances(cells, stride, rounded, color){
+    const size=stride*resolution, wallHeight=.65;
+    const geometry=rounded?new RoundedBoxGeometry(size*1.04,wallHeight,size*1.04,2,size*.20):new THREE.BoxGeometry(size*1.04,wallHeight,size*1.04);
+    const material=new THREE.MeshStandardMaterial({color,roughness:.83,metalness:.04,transparent:true,opacity:.82});
+    const mesh=new THREE.InstancedMesh(geometry,material,cells.length), transform=new THREE.Object3D();
+    cells.forEach(([x,y],i)=>{transform.position.set((x+stride/2-data.width/2)*resolution,wallHeight/2,(y+stride/2-data.height/2)*resolution);transform.updateMatrix();mesh.setMatrixAt(i,transform.matrix)});
+    mesh.instanceMatrix.needsUpdate=true;return mesh;
+  }
   const stride=4, cells=[];
   for(let y=0;y<data.height;y+=stride)for(let x=0;x<data.width;x+=stride){let min=255;for(let oy=0;oy<stride&&y+oy<data.height;oy++)for(let ox=0;ox<stride&&x+ox<data.width;ox++)min=Math.min(min,raw[((y+oy)*data.width+x+ox)*4]);if(min<78)cells.push([x,y]);}
-  const size=stride*resolution, wallHeight=.65;
-  const geometry=new THREE.BoxGeometry(size*1.04,wallHeight,size*1.04);const material=new THREE.MeshStandardMaterial({color:0x6eb38b,roughness:.83,metalness:.04,transparent:true,opacity:.82});
-  const walls=new THREE.InstancedMesh(geometry,material,cells.length);const transform=new THREE.Object3D();
-  cells.forEach(([x,y],i)=>{transform.position.set((x+stride/2-data.width/2)*resolution,wallHeight/2,(y+stride/2-data.height/2)*resolution);transform.updateMatrix();walls.setMatrixAt(i,transform.matrix)});walls.instanceMatrix.needsUpdate=true;scene.add(walls);
+  originalWalls=buildInstances(cells,stride,false,0x6eb38b);scene.add(originalWalls);
+  const enhancedImage=new Image();
+  enhancedImage.onload=()=>{
+    const c=document.createElement('canvas');c.width=enhancedImage.width;c.height=enhancedImage.height;const cc=c.getContext('2d',{willReadFrequently:true});cc.drawImage(enhancedImage,0,0);const mask=cc.getImageData(0,0,c.width,c.height).data;
+    const observed=[],inferred=[];for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++){let v=mask[(y*c.width+x)*4];if(v===128)observed.push([x*2,y*2]);else if(v===255)inferred.push([x*2,y*2]);}
+    enhancedWalls=new THREE.Group();enhancedWalls.add(buildInstances(observed,2,true,0x78bb93));enhancedWalls.add(buildInstances(inferred,2,true,0xd9ba71));scene.add(enhancedWalls);showWallMode(wallMode);
+  };
+  enhancedImage.onerror=()=>{showWallMode('original');$('error').hidden=false;$('error').textContent='补偿墙体加载失败，已显示原始墙体。'};
+  enhancedImage.src='assets/walls-enhanced.png';
+
 };
 image.onerror=()=>{$('error').hidden=false;$('error').textContent='地图数据加载失败，请刷新页面。'};
 image.src='assets/map.png';
