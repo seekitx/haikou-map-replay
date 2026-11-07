@@ -30,9 +30,16 @@ const playedGeometry = pathGeometry.clone(); playedGeometry.setDrawRange(0, 1);
 const playedLine = new THREE.Line(playedGeometry, new THREE.LineBasicMaterial({color: 0xb4ff77})); scene.add(playedLine);
 // Photo-referenced Blender model. Motion is a visualization of recorded positions.
 const robot = new THREE.Group();robot.name='alphabot2-replay';scene.add(robot);
-let robotReady=false, followRobot=false;
-new GLTFLoader().load('assets/alphabot2-reference.glb?v=1',gltf=>{robot.add(gltf.scene);robotReady=true;},undefined,()=>{$('error').hidden=false;$('error').textContent='机器人模型加载失败，请刷新页面。';});
-function setFollow(on){followRobot=on;$('follow').setAttribute('aria-pressed',String(on));$('follow').textContent=on?'退出跟随':'跟随机器人';if(on){controls.target.copy(robot.position).add(new THREE.Vector3(0,.85,0));camera.position.copy(controls.target).add(new THREE.Vector3(3.7,3.1,5.3));controls.update();}}
+let robotReady=false, followRobot=false, wheelAngle=0, wheelPivots=[];
+const wheelRadius=.105, cumulativeDistance=new Float64Array(data.trajectory.length);
+for(let i=1;i<data.trajectory.length;i++){const a=data.trajectory[i-1],b=data.trajectory[i];cumulativeDistance[i]=cumulativeDistance[i-1]+Math.hypot(b[0]-a[0],b[1]-a[1])*resolution;}
+new GLTFLoader().load('assets/alphabot2-reference-v2.glb?v=2',gltf=>{
+  robot.add(gltf.scene);wheelPivots=['AlphaBotWheel_L','AlphaBotWheel_R'].map(name=>gltf.scene.getObjectByName(name)).filter(Boolean);
+  $('canvas').dataset.wheelCount=String(wheelPivots.length);
+  if(wheelPivots.length!==2){$('error').hidden=false;$('error').textContent='机器人模型已加载，但轮子未能正常加载。';}
+  wheelPivots.forEach(wheel=>wheel.rotation.x=wheelAngle);robotReady=true;
+},undefined,()=>{$('error').hidden=false;$('error').textContent='机器人模型加载失败，请刷新页面。';});
+function setFollow(on){followRobot=on;$('follow').setAttribute('aria-pressed',String(on));$('follow').textContent=on?'退出跟随':'跟随机器人';if(on){controls.target.copy(robot.position).add(new THREE.Vector3(0,.85,0));camera.position.copy(controls.target).add(new THREE.Vector3(2.4,1.8,3.3));controls.update();}}
 $('follow').onclick=()=>{if(robotReady)setFollow(!followRobot)};
 
 let originalWalls, enhancedWalls; let wallMode = 'enhanced';
@@ -75,7 +82,7 @@ image.onload = () => {
 image.onerror=()=>{$('error').hidden=false;$('error').textContent='地图数据加载失败，请刷新页面。'};
 image.src='assets/map.png';
 let progress=0,playing=false,speed=1,last=0;
-function drawProgress(){const count=data.trajectory.length;const n=Math.max(1,Math.ceil(progress*(count-1))+1);playedGeometry.setDrawRange(0,n);let k=progress*(count-1),a=Math.floor(k),b=Math.min(a+1,count-1),f=k-a;const old=robot.position.clone();robot.position.copy(toWorld(data.trajectory[a],0)).lerp(toWorld(data.trajectory[b],0),f);const ahead=toWorld(data.trajectory[Math.min(count-1,b+5)],0),behind=toWorld(data.trajectory[Math.max(0,a-3)],0),direction=ahead.sub(behind);if(direction.lengthSq()>.0001)robot.rotation.y=Math.atan2(direction.x,direction.z);if(followRobot){const delta=robot.position.clone().sub(old);camera.position.add(delta);controls.target.add(delta)}const pct=Math.round(progress*100);$('seek').value=Math.round(progress*1000);$('percent').textContent=pct+'%';$('progress-label').textContent='回放进度 '+pct+'%';}
+function drawProgress(){const count=data.trajectory.length;const n=Math.max(1,Math.ceil(progress*(count-1))+1);playedGeometry.setDrawRange(0,n);let k=progress*(count-1),a=Math.floor(k),b=Math.min(a+1,count-1),f=k-a;const distance=cumulativeDistance[a]+f*(cumulativeDistance[b]-cumulativeDistance[a]);wheelAngle=distance/wheelRadius;wheelPivots.forEach(wheel=>wheel.rotation.x=wheelAngle);$('canvas').dataset.wheelAngle=wheelAngle.toFixed(5);const old=robot.position.clone();robot.position.copy(toWorld(data.trajectory[a],0)).lerp(toWorld(data.trajectory[b],0),f);const ahead=toWorld(data.trajectory[Math.min(count-1,b+5)],0),behind=toWorld(data.trajectory[Math.max(0,a-3)],0),direction=ahead.sub(behind);if(direction.lengthSq()>.0001)robot.rotation.y=Math.atan2(direction.x,direction.z);if(followRobot){const delta=robot.position.clone().sub(old);camera.position.add(delta);controls.target.add(delta)}const pct=Math.round(progress*100);$('seek').value=Math.round(progress*1000);$('percent').textContent=pct+'%';$('progress-label').textContent='回放进度 '+pct+'%';}
 function setPlaying(on){playing=on;last=0;$('play').textContent=on?'❚❚':'▶';$('play').setAttribute('aria-label',on?'暂停轨迹':'播放轨迹');$('play-status').textContent=on?'· 正在回放':'· 已暂停'}
 $('play').onclick=()=>{if(progress>=1)progress=0;setPlaying(!playing);drawProgress()};$('seek').oninput=e=>{progress=Number(e.target.value)/1000;drawProgress()};document.querySelectorAll('.speed').forEach(b=>b.onclick=()=>{speed=Number(b.dataset.speed);document.querySelectorAll('.speed').forEach(x=>x.classList.toggle('active',x===b))});
 function updateCameraLabels(){const radius=camera.position.distanceTo(controls.target);let tilt=Math.round(controls.getPolarAngle()*180/Math.PI), angle=Math.round(controls.getAzimuthalAngle()*180/Math.PI), distance=Math.round(radius/defaultDistance*100);$('tilt').value=tilt;$('rotation').value=angle;$('distance').value=distance;$('tilt-value').textContent=tilt+'°';$('rotation-value').textContent=angle+'°';$('distance-value').textContent=distance+'%'}
