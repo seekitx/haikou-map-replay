@@ -31,13 +31,14 @@ const playedLine = new THREE.Line(playedGeometry, new THREE.LineBasicMaterial({c
 // Photo-referenced Blender model. Motion is a visualization of recorded positions.
 const robot = new THREE.Group();robot.name='alphabot2-replay';scene.add(robot);
 let robotReady=false, followRobot=false, followMode=null, wheelAngle=0, wheelPivots=[];
+$('follow').disabled=true;$('eagle').disabled=true;
 const wheelRadius=.105, cumulativeDistance=new Float64Array(data.trajectory.length);
 for(let i=1;i<data.trajectory.length;i++){const a=data.trajectory[i-1],b=data.trajectory[i];cumulativeDistance[i]=cumulativeDistance[i-1]+Math.hypot(b[0]-a[0],b[1]-a[1])*resolution;}
-new GLTFLoader().load('assets/alphabot2-reference-v2.glb?v=2',gltf=>{
-  robot.add(gltf.scene);wheelPivots=['AlphaBotWheel_L','AlphaBotWheel_R'].map(name=>gltf.scene.getObjectByName(name)).filter(Boolean);
+new GLTFLoader().load('assets/alphabot2-reference-v5.glb?v=5',gltf=>{
+  robot.add(gltf.scene);wheelPivots=['AB5_Wheel_L','AB5_Wheel_R'].map(name=>gltf.scene.getObjectByName(name)).filter(Boolean);
   $('canvas').dataset.wheelCount=String(wheelPivots.length);
   if(wheelPivots.length!==2){$('error').hidden=false;$('error').textContent='机器人模型已加载，但轮子未能正常加载。';}
-  wheelPivots.forEach(wheel=>wheel.rotation.x=wheelAngle);robotReady=true;
+  wheelPivots.forEach(wheel=>wheel.rotation.x=wheelAngle);robotReady=true;$('follow').disabled=false;$('eagle').disabled=false;
 },undefined,()=>{$('error').hidden=false;$('error').textContent='机器人模型加载失败，请刷新页面。';});
 const eagleRing=new THREE.Mesh(new THREE.RingGeometry(.72,.86,48),new THREE.MeshBasicMaterial({color:0xb4f477,transparent:true,opacity:.9,side:THREE.DoubleSide}));eagleRing.rotation.x=-Math.PI/2;eagleRing.position.y=.08;eagleRing.visible=false;robot.add(eagleRing);
 function setFollow(on,mode='close'){
