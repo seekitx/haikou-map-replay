@@ -1,6 +1,7 @@
 """Create continuous display-only wall surfaces from the 2D map.
 
 Uses a conservative, local 15 cm-radius closing and contour simplification.
+Short isolated obstacles remain in the source floor image but are not extruded as walls.
 Does not infer building heights or claim openings are verified. Original map is untouched.
 Requires numpy, scipy, contourpy and shapely 2.1+.
 """
@@ -43,7 +44,17 @@ for polygon in polygonize([LineString(c) for c in lines if len(c)>=4]):
  # 2 pixels corresponds to 10 cm; keep topology and drop sub-0.0075 m² artifacts.
  polygon=polygon.simplify(2.0 if polygon.area > 60 else .8,preserve_topology=True)
  if not polygon.is_empty and polygon.is_valid and polygon.area>=3:polys.append(polygon)
-print('Contours:',len(lines),'wall surfaces:',len(polys),flush=True)
+# A 2D occupancy scan contains furniture and speckles as well as walls. Rendering
+# every separate region at wall height creates misleading freestanding pillars.
+# Keep long regions and substantial fragments close to a long region; keep all
+# source observations visible on the floor and in the original-wall view.
+def longest_side_m(polygon):
+ coords=list(polygon.minimum_rotated_rectangle.exterior.coords)
+ return max(((x2-x1)**2+(y2-y1)**2)**.5 for (x1,y1),(x2,y2) in zip(coords,coords[1:]))*.05
+all_polys=polys
+long_polys=[p for p in all_polys if longest_side_m(p)>=2.0]
+polys=[p for p in all_polys if longest_side_m(p)>=2.0 or (longest_side_m(p)>=.75 and any(p.distance(wall)*.05<=.30 for wall in long_polys))]
+print('Contours:',len(lines),'wall surfaces:',len(polys),'not raised:',len(all_polys)-len(polys),flush=True)
 # Convert pixel coordinates to world metres, Y-up. A 0.8 m wall is purely illustrative.
 scale=.05;wall_h=.8
 vertices=[]
@@ -60,7 +71,7 @@ for p in polys:
    for xyz in (a,b,c,a,c,d):vertices.extend(xyz)
 vertices=np.asarray(vertices,dtype='<f4')
 (root/'assets/wall-surfaces.bin').write_bytes(vertices.tobytes())
-meta={'resolution_m':scale,'threshold_gray_below':105,'min_component_pixels':3,'closing_radius_m':.15,'outline_simplification_m':.1,'display_height_m':wall_h,'surface_count':len(polys),'triangle_count':int(len(vertices)//9),'detected_pixels':int(raw.sum()),'filtered_pixels':int(raw.sum()-clean.sum()),'closing_added_pixels':int((closed & ~clean).sum())}
+meta={'resolution_m':scale,'threshold_gray_below':105,'min_component_pixels':3,'closing_radius_m':.15,'outline_simplification_m':.1,'display_height_m':wall_h,'min_wall_length_m':2.0,'near_wall_fragment_min_length_m':.75,'near_wall_distance_m':.30,'surface_count_before_filter':len(all_polys),'surface_count':len(polys),'not_raised_count':len(all_polys)-len(polys),'triangle_count':int(len(vertices)//9),'detected_pixels':int(raw.sum()),'filtered_pixels':int(raw.sum()-clean.sum()),'closing_added_pixels':int((closed & ~clean).sum())}
 (root/'assets/wall-surfaces.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2)+'\n')
 print(json.dumps(meta,ensure_ascii=False),flush=True)
 # Comparison image, used for visual inspection, not as source data.

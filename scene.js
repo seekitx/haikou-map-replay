@@ -76,7 +76,7 @@ image.onload = () => {
   for(let y=0;y<data.height;y+=stride)for(let x=0;x<data.width;x+=stride){let min=255;for(let oy=0;oy<stride&&y+oy<data.height;oy++)for(let ox=0;ox<stride&&x+ox<data.width;ox++)min=Math.min(min,raw[((y+oy)*data.width+x+ox)*4]);if(min<78)cells.push([x,y]);}
   originalWalls=buildInstances(cells,stride,false,0x6eb38b);scene.add(originalWalls);
   // Contours are joined into one continuous display mesh; the source raster remains unchanged.
-  fetch('assets/wall-surfaces.bin?v=20261106-smooth2')
+  fetch('assets/wall-surfaces.bin?v=20261108-filter1')
     .then(response=>{if(!response.ok)throw new Error('Could not load wall surfaces');return response.arrayBuffer()})
     .then(buffer=>{
       const points=new Float32Array(buffer);if(points.length===0||points.length%9!==0)throw new Error('Invalid wall surface data');
