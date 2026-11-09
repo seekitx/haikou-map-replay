@@ -59,9 +59,26 @@ Promise.all([fetch('assets/map-objects.json?v=20261109-1').then(response=>{if(!r
 }).catch(()=>{$('error').hidden=false;$('error').textContent='柱子和座椅模型加载失败，请刷新页面。';});
 const positions = data.trajectory.flatMap(p => { const v = toWorld(p); return [v.x, v.y, v.z]; });
 const pathGeometry = new THREE.BufferGeometry(); pathGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-const fullLine = new THREE.Line(pathGeometry, new THREE.LineBasicMaterial({color: 0x8294aa, transparent:true, opacity:.4})); scene.add(fullLine);
+// Two independent line buffers meet exactly at the interpolated robot position.
+const remainingGeometry = pathGeometry.clone();
+const remainingLine = new THREE.Line(remainingGeometry, new THREE.LineBasicMaterial({color: 0x8895a5, transparent:true, opacity:.72})); scene.add(remainingLine);
 const playedGeometry = pathGeometry.clone(); playedGeometry.setDrawRange(0, 1);
-const playedLine = new THREE.Line(playedGeometry, new THREE.LineBasicMaterial({color: 0x2575e8})); scene.add(playedLine);
+const playedLine = new THREE.Line(playedGeometry, new THREE.LineBasicMaterial({color: 0x176be5})); playedLine.renderOrder=1; scene.add(playedLine);
+let previousSplit=-1;
+function updatePathSplit(a,b,f){
+  const base=pathGeometry.attributes.position, done=playedGeometry.attributes.position, remaining=remainingGeometry.attributes.position;
+  if(previousSplit>=0){
+    const next=Math.min(previousSplit+1,base.count-1);
+    done.setXYZ(next,base.getX(next),base.getY(next),base.getZ(next));
+    remaining.setXYZ(previousSplit,base.getX(previousSplit),base.getY(previousSplit),base.getZ(previousSplit));
+  }
+  const x=base.getX(a)+(base.getX(b)-base.getX(a))*f, y=base.getY(a)+(base.getY(b)-base.getY(a))*f, z=base.getZ(a)+(base.getZ(b)-base.getZ(a))*f;
+  if(a!==b)done.setXYZ(b,x,y,z);
+  remaining.setXYZ(a,x,y,z);
+  playedGeometry.setDrawRange(0,a===b?a+1:a+2);
+  remainingGeometry.setDrawRange(a,base.count-a);
+  done.needsUpdate=true;remaining.needsUpdate=true;previousSplit=a;
+}
 // Photo-referenced Blender model. Motion is a visualization of recorded positions.
 const robot = new THREE.Group();robot.name='alphabot2-replay';scene.add(robot);
 let robotReady=false, followRobot=false, followMode=null, wheelAngle=0, wheelPivots=[];
@@ -125,7 +142,7 @@ image.onload = () => {
 image.onerror=()=>{$('error').hidden=false;$('error').textContent='地图数据加载失败，请刷新页面。'};
 image.src='assets/map.png';
 let progress=0,playing=false,speed=1,last=0;
-function drawProgress(){const count=data.trajectory.length;const n=Math.max(1,Math.ceil(progress*(count-1))+1);playedGeometry.setDrawRange(0,n);let k=progress*(count-1),a=Math.floor(k),b=Math.min(a+1,count-1),f=k-a;const distance=cumulativeDistance[a]+f*(cumulativeDistance[b]-cumulativeDistance[a]);wheelAngle=distance/wheelRadius;wheelPivots.forEach(wheel=>wheel.rotation.x=wheelAngle);$('canvas').dataset.wheelAngle=wheelAngle.toFixed(5);const old=robot.position.clone();robot.position.copy(toWorld(data.trajectory[a],0)).lerp(toWorld(data.trajectory[b],0),f);const ahead=toWorld(data.trajectory[Math.min(count-1,b+5)],0),behind=toWorld(data.trajectory[Math.max(0,a-3)],0),direction=ahead.sub(behind);if(direction.lengthSq()>.0001)robot.rotation.y=Math.atan2(direction.x,direction.z);if(followRobot){const delta=robot.position.clone().sub(old);camera.position.add(delta);controls.target.add(delta)}$('canvas').dataset.robotXZ=robot.position.x.toFixed(3)+','+robot.position.z.toFixed(3);$('canvas').dataset.cameraXZ=camera.position.x.toFixed(3)+','+camera.position.z.toFixed(3);$('canvas').dataset.targetXZ=controls.target.x.toFixed(3)+','+controls.target.z.toFixed(3);const pct=Math.round(progress*100);$('seek').value=Math.round(progress*1000);$('percent').textContent=pct+'%';$('progress-label').textContent='回放进度 '+pct+'%';}
+function drawProgress(){const count=data.trajectory.length;let k=progress*(count-1),a=Math.floor(k),b=Math.min(a+1,count-1),f=k-a;updatePathSplit(a,b,f);const distance=cumulativeDistance[a]+f*(cumulativeDistance[b]-cumulativeDistance[a]);wheelAngle=distance/wheelRadius;wheelPivots.forEach(wheel=>wheel.rotation.x=wheelAngle);$('canvas').dataset.wheelAngle=wheelAngle.toFixed(5);const old=robot.position.clone();robot.position.copy(toWorld(data.trajectory[a],0)).lerp(toWorld(data.trajectory[b],0),f);const ahead=toWorld(data.trajectory[Math.min(count-1,b+5)],0),behind=toWorld(data.trajectory[Math.max(0,a-3)],0),direction=ahead.sub(behind);if(direction.lengthSq()>.0001)robot.rotation.y=Math.atan2(direction.x,direction.z);if(followRobot){const delta=robot.position.clone().sub(old);camera.position.add(delta);controls.target.add(delta)}$('canvas').dataset.robotXZ=robot.position.x.toFixed(3)+','+robot.position.z.toFixed(3);$('canvas').dataset.cameraXZ=camera.position.x.toFixed(3)+','+camera.position.z.toFixed(3);$('canvas').dataset.targetXZ=controls.target.x.toFixed(3)+','+controls.target.z.toFixed(3);const pct=Math.round(progress*100);$('seek').value=Math.round(progress*1000);$('percent').textContent=pct+'%';$('progress-label').textContent='回放进度 '+pct+'%';}
 function setPlaying(on){playing=on;last=0;$('play').textContent=on?'❚❚':'▶';$('play').setAttribute('aria-label',on?'暂停轨迹':'播放轨迹');$('play-status').textContent=on?'· 正在回放':'· 已暂停'}
 $('play').onclick=()=>{if(progress>=1)progress=0;setPlaying(!playing);drawProgress()};$('seek').oninput=e=>{progress=Number(e.target.value)/1000;drawProgress()};document.querySelectorAll('.speed').forEach(b=>b.onclick=()=>{speed=Number(b.dataset.speed);document.querySelectorAll('.speed').forEach(x=>x.classList.toggle('active',x===b))});
 function updateCameraLabels(){const radius=camera.position.distanceTo(controls.target);let tilt=Math.round(controls.getPolarAngle()*180/Math.PI), angle=Math.round(controls.getAzimuthalAngle()*180/Math.PI), distance=Math.round(radius/defaultDistance*100);$('tilt').value=tilt;$('rotation').value=angle;$('distance').value=distance;$('tilt-value').textContent=tilt+'°';$('rotation-value').textContent=angle+'°';$('distance-value').textContent=distance+'%'}
