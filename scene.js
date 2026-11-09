@@ -35,7 +35,7 @@ const benchMaterial=new THREE.MeshStandardMaterial({color:0x94bba5,roughness:.78
 const legMaterial=new THREE.MeshStandardMaterial({color:0x597e6c,roughness:.75,metalness:.15});
 const legGeometry=new THREE.CylinderGeometry(.035,.035,.38,8);
 function addPillar([x,y,r]){
-  const point=toWorld([x,y],0), radius=r*resolution, height=1.65;
+  const point=toWorld([x,y],0), radius=r*resolution, height=2.8;
   const body=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,height,32),pillarMaterial);
   body.position.set(point.x,height/2,point.z);mapModels.add(body);
   const base=new THREE.Mesh(new THREE.CylinderGeometry(radius*1.04,radius*1.04,.08,32),pillarTrim);
@@ -99,7 +99,7 @@ image.onload = () => {
   const plane = new THREE.Mesh(new THREE.PlaneGeometry(width,height),new THREE.MeshBasicMaterial({map:texture,transparent:true,depthWrite:false,side:THREE.DoubleSide}));plane.rotation.x=-Math.PI/2;plane.position.y=0;scene.add(plane);
   // Retain the unmodified obstacle view for comparison.
   function buildInstances(cells, stride, rounded, color){
-    const size=stride*resolution, wallHeight=.65;
+    const size=stride*resolution, wallHeight=2.8;
     const geometry=rounded?new RoundedBoxGeometry(size*1.04,wallHeight,size*1.04,2,size*.20):new THREE.BoxGeometry(size*1.04,wallHeight,size*1.04);
     const material=new THREE.MeshStandardMaterial({color,roughness:.83,metalness:.04,transparent:true,opacity:.82});
     const mesh=new THREE.InstancedMesh(geometry,material,cells.length), transform=new THREE.Object3D();
@@ -110,7 +110,7 @@ image.onload = () => {
   for(let y=0;y<data.height;y+=stride)for(let x=0;x<data.width;x+=stride){let min=255;for(let oy=0;oy<stride&&y+oy<data.height;oy++)for(let ox=0;ox<stride&&x+ox<data.width;ox++)min=Math.min(min,raw[((y+oy)*data.width+x+ox)*4]);if(min<78)cells.push([x,y]);}
   originalWalls=buildInstances(cells,stride,false,0xaabbd1);scene.add(originalWalls);
   // Contours are joined into one continuous display mesh; the source raster remains unchanged.
-  fetch('assets/wall-surfaces.bin?v=20261108-filter1')
+  fetch('assets/wall-surfaces.bin?v=20261109-height28')
     .then(response=>{if(!response.ok)throw new Error('Could not load wall surfaces');return response.arrayBuffer()})
     .then(buffer=>{
       const points=new Float32Array(buffer);if(points.length===0||points.length%9!==0)throw new Error('Invalid wall surface data');

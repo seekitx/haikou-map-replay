@@ -55,8 +55,8 @@ all_polys=polys
 long_polys=[p for p in all_polys if longest_side_m(p)>=2.0]
 polys=[p for p in all_polys if longest_side_m(p)>=2.0 or (longest_side_m(p)>=.75 and any(p.distance(wall)*.05<=.30 for wall in long_polys))]
 print('Contours:',len(lines),'wall surfaces:',len(polys),'not raised:',len(all_polys)-len(polys),flush=True)
-# Convert pixel coordinates to world metres, Y-up. A 0.8 m wall is purely illustrative.
-scale=.05;wall_h=.8
+# Convert pixel coordinates to world metres, Y-up. A 2.8 m wall is purely illustrative.
+scale=.05;wall_h=2.8
 vertices=[]
 def point(x,y,elevation):return ((x-2-w/2)*scale,elevation,(y-2-h/2)*scale)
 for p in polys:

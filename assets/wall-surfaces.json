@@ -4,7 +4,7 @@
   "min_component_pixels": 3,
   "closing_radius_m": 0.15,
   "outline_simplification_m": 0.1,
-  "display_height_m": 0.8,
+  "display_height_m": 2.8,
   "min_wall_length_m": 2.0,
   "near_wall_fragment_min_length_m": 0.75,
   "near_wall_distance_m": 0.3,
