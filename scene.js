@@ -23,6 +23,49 @@ const directional = new THREE.DirectionalLight(0xb2f9c5, 2); directional.positio
 const grid = new THREE.GridHelper(160, 80, 0x4c8b68, 0x315544); grid.position.y = -.12; grid.material.transparent = true; grid.material.opacity = .12; scene.add(grid);
 const resolution = data.resolution, width = data.width * resolution, height = data.height * resolution;
 const toWorld = ([x,y], h = .30) => new THREE.Vector3((x - data.width / 2) * resolution, h, (y - data.height / 2) * resolution);
+
+// Positions are hand matched to the floor raster using the user's identification.
+// The input is 2D: shape, height, materials and side of the bench back are illustrative.
+const mapModels = new THREE.Group(); mapModels.name='illustrative-pillars-and-benches'; scene.add(mapModels);
+const modelButton=$('map-models'); modelButton.disabled=true;
+modelButton.onclick=()=>{mapModels.visible=!mapModels.visible;modelButton.setAttribute('aria-pressed',String(mapModels.visible));};
+const pillarMaterial=new THREE.MeshStandardMaterial({color:0xadcbb6,roughness:.72,metalness:.03});
+const pillarTrim=new THREE.MeshStandardMaterial({color:0x567f68,roughness:.7,metalness:.12});
+const benchMaterial=new THREE.MeshStandardMaterial({color:0x94bba5,roughness:.78,metalness:.04,side:THREE.DoubleSide});
+const legMaterial=new THREE.MeshStandardMaterial({color:0x597e6c,roughness:.75,metalness:.15});
+const legGeometry=new THREE.CylinderGeometry(.035,.035,.38,8);
+function addPillar([x,y,r]){
+  const point=toWorld([x,y],0), radius=r*resolution, height=1.65;
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,height,32),pillarMaterial);
+  body.position.set(point.x,height/2,point.z);mapModels.add(body);
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(radius*1.04,radius*1.04,.08,32),pillarTrim);
+  base.position.set(point.x,.04,point.z);mapModels.add(base);
+}
+function makeRibbon(points, offset, thickness, bottom, top){
+  const vertices=[], indices=[];
+  for(let i=0;i<points.length;i++){
+    const p=points[i], prev=points[Math.max(0,i-1)], next=points[Math.min(points.length-1,i+1)];
+    const dx=next.x-prev.x,dz=next.z-prev.z,len=Math.hypot(dx,dz)||1,nx=-dz/len,nz=dx/len;
+    const a=offset-thickness/2,b=offset+thickness/2;
+    vertices.push(p.x+nx*a,bottom,p.z+nz*a,p.x+nx*b,bottom,p.z+nz*b,p.x+nx*a,top,p.z+nz*a,p.x+nx*b,top,p.z+nz*b);
+    if(i){const v=4*i,q=v-4;indices.push(q+2,v+2,v+3,q+2,v+3,q+3,q,v,v+2,q,v+2,q+2,q+1,q+3,v+3,q+1,v+3,v+1,q,q+1,v+1,q,v+1,v);}
+  }
+  const end=4*(points.length-1);indices.push(0,2,3,0,3,1,end,end+1,end+3,end,end+3,end+2);
+  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));geometry.setIndex(indices);geometry.computeVertexNormals();
+  return new THREE.Mesh(geometry,benchMaterial);
+}
+function addBench([x1,y1,x2,y2,w,bend]){
+  const points=[];for(let i=0;i<=24;i++){const t=i/24;points.push(toWorld([x1*(1-t)+x2*t+4*bend*t*(1-t),y1*(1-t)+y2*t],0));}
+  const seatWidth=w*resolution;mapModels.add(makeRibbon(points,0,seatWidth,.39,.5));
+  mapModels.add(makeRibbon(points,-seatWidth/2+.035,.07,.5,.88));
+  for(const index of [4,20]){const p=points[index],prev=points[index-1],next=points[index+1],dx=next.x-prev.x,dz=next.z-prev.z,len=Math.hypot(dx,dz)||1;
+    for(const side of [-1,1]){const leg=new THREE.Mesh(legGeometry,legMaterial),offset=side*seatWidth*.32;leg.position.set(p.x-dz/len*offset,.19,p.z+dx/len*offset);mapModels.add(leg);}}
+}
+fetch('assets/map-objects.json?v=20261109-1').then(response=>{if(!response.ok)throw new Error('model positions');return response.json();}).then(objects=>{
+  if(!Array.isArray(objects.pillars)||!Array.isArray(objects.benches))throw new Error('invalid model positions');
+  objects.pillars.forEach(addPillar);objects.benches.forEach(addBench);
+  $('canvas').dataset.pillarCount=String(objects.pillars.length);$('canvas').dataset.benchCount=String(objects.benches.length);modelButton.disabled=false;
+}).catch(()=>{$('error').hidden=false;$('error').textContent='柱子和座椅模型加载失败，请刷新页面。';});
 const positions = data.trajectory.flatMap(p => { const v = toWorld(p); return [v.x, v.y, v.z]; });
 const pathGeometry = new THREE.BufferGeometry(); pathGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
 const fullLine = new THREE.Line(pathGeometry, new THREE.LineBasicMaterial({color: 0x81a598, transparent:true, opacity:.4})); scene.add(fullLine);

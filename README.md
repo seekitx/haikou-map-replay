@@ -10,6 +10,10 @@ The continuous wall layer is an exploratory rendering reconstructed from the 2D 
 
 The reproducible generator is `tools/build_wall_surfaces.py`, using NumPy, SciPy, contourpy and Shapely 2.1+. `assets/wall-surfaces.json` records processing settings; `assets/wall-surface-preview.png` is a diagnostic where gold denotes candidate bridge pixels. Original input assets and the pbstream are not changed.
 
+## Pillars and curved benches
+
+The user identified the round outlines as pillars and the curved outlines as seats. `assets/map-objects.json` stores manually matched approximate positions and footprints for nine pillars and 20 curved benches on the source raster. The viewer constructs illustrative 3D models at those positions and provides a layer toggle. Heights, materials, bench backrests and some partially visible outlines are estimates, not measured geometry. Several benches are close to the historical trajectory and the displayed robot may overlap them; neither collision clearance nor navigation safety has been verified. The source map and trajectory are unchanged.
+
 ## Robot model
 
 The robot is a detailed Blender-created visual approximation based on the manufacturer's [AlphaBot 2 product image](https://docs.ai2robotics.com/start/product-introduction/) and [hardware description](https://docs.ai2robotics.com/en/alphabot2/hardware/architecture/). The torso, shell seams, sensors, joints, tool mounts, base, and grippers are hand-modelled visual approximations. It is not an official engineering or CAD model. The wheeled character follows the recorded 2D trajectory and turns according to its path. The two wheel meshes rotate by distance travelled using an illustrative 0.105 m radius; wheel motion is not measured encoder data. Playback speed and body pose are illustrative; the underlying file has not been verified as originating from an AlphaBot 2.
