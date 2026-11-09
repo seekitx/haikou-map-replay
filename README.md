@@ -1,6 +1,6 @@
 # Haikou map replay
 
-A browser-based 3D scene built from a reconstructed 2D Cartographer occupancy map and recorded trajectory. The camera orbits a fixed map. The low wall height is an illustrative visual convention, not measured height; replay uses an adjustable illustrative speed (0.3 or 0.5 m/s), not recorded vehicle speed. This is historical data, not live vehicle status.
+A browser-based 3D scene built from a reconstructed 2D Cartographer occupancy map and recorded trajectory. The camera orbits a fixed map. The low wall height is an illustrative visual convention, not measured height; replay uses an adjustable illustrative speed (0.5, 1, 1.5 or 2 m/s), not recorded vehicle speed. This is historical data, not live vehicle status.
 
 The published site contains only the reconstructed map image, trajectory coordinates, viewer code, and a locally hosted copy of Three.js. The original archive and raw pbstream are not included. Three.js is MIT licensed; see vendor/THREE-LICENSE.
 
@@ -16,6 +16,6 @@ The user identified the round outlines as pillars and the curved outlines as sea
 
 ## Robot model
 
-The robot is a detailed Blender-created visual approximation based on the manufacturer's [AlphaBot 2 product image](https://docs.ai2robotics.com/start/product-introduction/) and [hardware description](https://docs.ai2robotics.com/en/alphabot2/hardware/architecture/). The torso, shell seams, sensors, joints, tool mounts, base, and grippers are hand-modelled visual approximations. It is not an official engineering or CAD model. The wheeled character follows the recorded 2D trajectory and turns according to its path. The two wheel meshes rotate by distance travelled using an illustrative 0.105 m radius; wheel motion is not measured encoder data. Playback speed is distance-based at 0.3 or 0.5 m/s; body pose remains illustrative; the underlying file has not been verified as originating from an AlphaBot 2.
+The robot is a detailed Blender-created visual approximation based on the manufacturer's [AlphaBot 2 product image](https://docs.ai2robotics.com/start/product-introduction/) and [hardware description](https://docs.ai2robotics.com/en/alphabot2/hardware/architecture/). The torso, shell seams, sensors, joints, tool mounts, base, and grippers are hand-modelled visual approximations. It is not an official engineering or CAD model. The wheeled character follows the recorded 2D trajectory and turns according to its path. The two wheel meshes rotate by distance travelled using an illustrative 0.105 m radius; wheel motion is not measured encoder data. Playback speed is distance-based at 0.5, 1, 1.5 or 2 m/s; body pose remains illustrative; the underlying file has not been verified as originating from an AlphaBot 2.
 
-The viewer offers a close robot-follow view and an overhead follow view; these are camera controls over the same recorded trajectory, not live robot tracking.
+In follow views the camera stays centered on the robot and the robot is drawn in front of occluding geometry, so this view is illustrative, not a physical visibility simulation. The viewer offers a close robot-follow view and an overhead follow view; these are camera controls over the same recorded trajectory, not live robot tracking.

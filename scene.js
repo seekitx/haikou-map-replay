@@ -18,8 +18,8 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.dampingFactor = .09; controls.minDistance = 2.2; controls.maxDistance = 190; controls.maxPolarAngle = Math.PI / 2 - .06;
 controls.target.set(0, 0, 0); controls.update(); controls.saveState();
 const defaultDistance = camera.position.distanceTo(controls.target);
-scene.add(new THREE.HemisphereLight(0xffffff, 0x94a5bd, 1.65));
-const directional = new THREE.DirectionalLight(0xffffff, 1.5); directional.position.set(-30, 70, 35); scene.add(directional);
+const ambient=new THREE.HemisphereLight(0xffffff, 0x94a5bd, 1.65);ambient.layers.enable(1);scene.add(ambient);
+const directional = new THREE.DirectionalLight(0xffffff, 1.5); directional.position.set(-30, 70, 35);directional.layers.enable(1); scene.add(directional);
 const grid = new THREE.GridHelper(160, 80, 0xc3d1e1, 0xe1e8f0); grid.position.y = -.12; grid.material.transparent = true; grid.material.opacity = .25; scene.add(grid);
 const resolution = data.resolution, width = data.width * resolution, height = data.height * resolution;
 const toWorld = ([x,y], h = .30) => new THREE.Vector3((x - data.width / 2) * resolution, h, (y - data.height / 2) * resolution);
@@ -86,18 +86,19 @@ $('follow').disabled=true;$('eagle').disabled=true;
 const wheelRadius=.105, cumulativeDistance=new Float64Array(data.trajectory.length);
 for(let i=1;i<data.trajectory.length;i++){const a=data.trajectory[i-1],b=data.trajectory[i];cumulativeDistance[i]=cumulativeDistance[i-1]+Math.hypot(b[0]-a[0],b[1]-a[1])*resolution;}
 new GLTFLoader().load('assets/alphabot2-reference-v7.glb?v=7',gltf=>{
-  robot.add(gltf.scene);wheelPivots=['AB7_Wheel_L','AB7_Wheel_R'].map(name=>gltf.scene.getObjectByName(name)).filter(Boolean);
+  robot.add(gltf.scene);gltf.scene.traverse(object=>object.layers.enable(1));wheelPivots=['AB7_Wheel_L','AB7_Wheel_R'].map(name=>gltf.scene.getObjectByName(name)).filter(Boolean);
   $('canvas').dataset.wheelCount=String(wheelPivots.length);
   if(wheelPivots.length!==2){$('error').hidden=false;$('error').textContent='机器人模型已加载，但轮子未能正常加载。';}
   wheelPivots.forEach(wheel=>wheel.rotation.x=wheelAngle);robotReady=true;$('follow').disabled=false;$('eagle').disabled=false;
 },undefined,()=>{$('error').hidden=false;$('error').textContent='机器人模型加载失败，请刷新页面。';});
-const eagleRing=new THREE.Mesh(new THREE.RingGeometry(.72,.86,48),new THREE.MeshBasicMaterial({color:0x2575e8,transparent:true,opacity:.9,side:THREE.DoubleSide}));eagleRing.rotation.x=-Math.PI/2;eagleRing.position.y=.08;eagleRing.visible=false;robot.add(eagleRing);
+const eagleRing=new THREE.Mesh(new THREE.RingGeometry(.72,.86,48),new THREE.MeshBasicMaterial({color:0x2575e8,transparent:true,opacity:.9,side:THREE.DoubleSide}));eagleRing.rotation.x=-Math.PI/2;eagleRing.position.y=.08;eagleRing.visible=false;eagleRing.layers.enable(1);robot.add(eagleRing);
 function setFollow(on,mode='close'){
   followRobot=on;followMode=on?mode:null;$('canvas').dataset.followMode=followMode||'none';
+  controls.enablePan=!on;controls.minDistance=on?5:2.2;controls.maxDistance=on?(mode==='eagle'?40:15):190;
   const close=on&&mode==='close',eagle=on&&mode==='eagle';
   $('follow').setAttribute('aria-pressed',String(close));$('follow').textContent=close?'退出跟随':'跟随机器人';
   $('eagle').setAttribute('aria-pressed',String(eagle));$('eagle').textContent=eagle?'退出鹰眼':'鹰眼跟随';eagleRing.visible=eagle;
-  if(on){controls.target.copy(robot.position).add(new THREE.Vector3(0,close ? .85 : 0,0));camera.position.copy(controls.target).add(eagle?new THREE.Vector3(0,30,.03):new THREE.Vector3(2.4,1.8,3.3));controls.update();}
+  if(on){controls.target.copy(robot.position).add(new THREE.Vector3(0,close ? .85 : 0,0));camera.position.copy(controls.target).add(eagle?new THREE.Vector3(0,30,.03):new THREE.Vector3(2.4,4.6,3.3));controls.update();}
 }
 $('follow').onclick=()=>{if(robotReady)setFollow(!(followRobot&&followMode==='close'),'close')};
 $('eagle').onclick=()=>{if(robotReady)setFollow(!(followRobot&&followMode==='eagle'),'eagle')};
@@ -142,7 +143,7 @@ image.onload = () => {
 image.onerror=()=>{$('error').hidden=false;$('error').textContent='地图数据加载失败，请刷新页面。'};
 image.src='assets/map.png';
 const totalDistance=cumulativeDistance[cumulativeDistance.length-1];
-let progress=0,playing=false,speed=.3,last=0;
+let progress=0,playing=false,speed=.5,last=0;
 // Locate the segment by travelled distance, including repeated stationary points.
 function locateDistance(distance){
   let lo=0,hi=cumulativeDistance.length-1;
@@ -163,4 +164,4 @@ $('zoom-in').onclick=()=>setCamera(controls.getPolarAngle()*180/Math.PI,controls
 $('zoom-out').onclick=()=>setCamera(controls.getPolarAngle()*180/Math.PI,controls.getAzimuthalAngle()*180/Math.PI,camera.position.distanceTo(controls.target)*1.25);
 function resize(){let w=stage.clientWidth,h=stage.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
 new ResizeObserver(resize).observe(stage);resize();updateCameraLabels();drawProgress();
-function frame(t){if(playing){if(last)progress=totalDistance>0?Math.min(1,progress+(t-last)/1000*speed/totalDistance):1;last=t;drawProgress();if(progress>=1)setPlaying(false)}controls.update();renderer.render(scene,camera);requestAnimationFrame(frame)}requestAnimationFrame(frame);
+function frame(t){if(playing){if(last)progress=totalDistance>0?Math.min(1,progress+(t-last)/1000*speed/totalDistance):1;last=t;drawProgress();if(progress>=1)setPlaying(false)}controls.update();renderer.autoClear=true;camera.layers.set(0);renderer.render(scene,camera);if(followRobot&&robotReady){renderer.autoClear=false;renderer.clearDepth();camera.layers.set(1);renderer.render(scene,camera);camera.layers.set(0)}requestAnimationFrame(frame)}requestAnimationFrame(frame);
