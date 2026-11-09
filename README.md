@@ -12,7 +12,7 @@ The reproducible generator is `tools/build_wall_surfaces.py`, using NumPy, SciPy
 
 ## Pillars and curved benches
 
-The user identified the round outlines as pillars and the curved outlines as seats. `assets/map-objects.json` stores manually matched approximate positions and footprints for nine pillars and 20 curved benches on the source raster. The viewer constructs illustrative 3D models at those positions and provides a layer toggle. Heights, materials, bench backrests and some partially visible outlines are estimates, not measured geometry. Several benches are close to the historical trajectory and the displayed robot may overlap them; neither collision clearance nor navigation safety has been verified. The source map and trajectory are unchanged.
+The user identified the round outlines as pillars and the curved outlines as seats. `assets/map-objects.json` stores manually matched approximate positions and footprints for nine pillars and 20 curved bench rows on the source raster. The viewer arranges the Blender-created `assets/airport-seat.glb` along those rows and provides a layer toggle; its editable source is `assets/airport-seat.blend`. Heights, materials, bench backrests and some partially visible outlines are estimates, not measured geometry. Several benches are close to the historical trajectory and the displayed robot may overlap them; neither collision clearance nor navigation safety has been verified. The source map and trajectory are unchanged.
 
 ## Robot model
 

@@ -18,9 +18,9 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.dampingFactor = .09; controls.minDistance = 2.2; controls.maxDistance = 190; controls.maxPolarAngle = Math.PI / 2 - .06;
 controls.target.set(0, 0, 0); controls.update(); controls.saveState();
 const defaultDistance = camera.position.distanceTo(controls.target);
-scene.add(new THREE.HemisphereLight(0xd9ffe5, 0x10251b, 2.0));
-const directional = new THREE.DirectionalLight(0xb2f9c5, 2); directional.position.set(-30, 70, 35); scene.add(directional);
-const grid = new THREE.GridHelper(160, 80, 0x4c8b68, 0x315544); grid.position.y = -.12; grid.material.transparent = true; grid.material.opacity = .12; scene.add(grid);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x94a5bd, 1.65));
+const directional = new THREE.DirectionalLight(0xffffff, 1.5); directional.position.set(-30, 70, 35); scene.add(directional);
+const grid = new THREE.GridHelper(160, 80, 0xc3d1e1, 0xe1e8f0); grid.position.y = -.12; grid.material.transparent = true; grid.material.opacity = .25; scene.add(grid);
 const resolution = data.resolution, width = data.width * resolution, height = data.height * resolution;
 const toWorld = ([x,y], h = .30) => new THREE.Vector3((x - data.width / 2) * resolution, h, (y - data.height / 2) * resolution);
 
@@ -29,8 +29,8 @@ const toWorld = ([x,y], h = .30) => new THREE.Vector3((x - data.width / 2) * res
 const mapModels = new THREE.Group(); mapModels.name='illustrative-pillars-and-benches'; scene.add(mapModels);
 const modelButton=$('map-models'); modelButton.disabled=true;
 modelButton.onclick=()=>{mapModels.visible=!mapModels.visible;modelButton.setAttribute('aria-pressed',String(mapModels.visible));};
-const pillarMaterial=new THREE.MeshStandardMaterial({color:0xadcbb6,roughness:.72,metalness:.03});
-const pillarTrim=new THREE.MeshStandardMaterial({color:0x567f68,roughness:.7,metalness:.12});
+const pillarMaterial=new THREE.MeshStandardMaterial({color:0xd7dde5,roughness:.72,metalness:.03});
+const pillarTrim=new THREE.MeshStandardMaterial({color:0x8797aa,roughness:.7,metalness:.12});
 const benchMaterial=new THREE.MeshStandardMaterial({color:0x94bba5,roughness:.78,metalness:.04,side:THREE.DoubleSide});
 const legMaterial=new THREE.MeshStandardMaterial({color:0x597e6c,roughness:.75,metalness:.15});
 const legGeometry=new THREE.CylinderGeometry(.035,.035,.38,8);
@@ -41,36 +41,27 @@ function addPillar([x,y,r]){
   const base=new THREE.Mesh(new THREE.CylinderGeometry(radius*1.04,radius*1.04,.08,32),pillarTrim);
   base.position.set(point.x,.04,point.z);mapModels.add(base);
 }
-function makeRibbon(points, offset, thickness, bottom, top){
-  const vertices=[], indices=[];
-  for(let i=0;i<points.length;i++){
-    const p=points[i], prev=points[Math.max(0,i-1)], next=points[Math.min(points.length-1,i+1)];
-    const dx=next.x-prev.x,dz=next.z-prev.z,len=Math.hypot(dx,dz)||1,nx=-dz/len,nz=dx/len;
-    const a=offset-thickness/2,b=offset+thickness/2;
-    vertices.push(p.x+nx*a,bottom,p.z+nz*a,p.x+nx*b,bottom,p.z+nz*b,p.x+nx*a,top,p.z+nz*a,p.x+nx*b,top,p.z+nz*b);
-    if(i){const v=4*i,q=v-4;indices.push(q+2,v+2,v+3,q+2,v+3,q+3,q,v,v+2,q,v+2,q+2,q+1,q+3,v+3,q+1,v+3,v+1,q,q+1,v+1,q,v+1,v);}
+function addBench(row,template){
+  const [x1,y1,x2,y2,w,bend]=row;
+  const length=Math.hypot(x2-x1,y2-y1)*resolution;
+  const count=Math.max(2,Math.round(length/.52));
+  for(let i=0;i<count;i++){
+    const t=(i+.5)/count, x=x1*(1-t)+x2*t+4*bend*t*(1-t), y=y1*(1-t)+y2*t;
+    const dx=x2-x1+4*bend*(1-2*t),dy=y2-y1;
+    const seat=template.clone(true), point=toWorld([x,y],0);
+    seat.position.copy(point); seat.rotation.y=-Math.atan2(dy,dx); seat.scale.set(length/count/.52,1,Math.min(1.15,w*resolution/.65));mapModels.add(seat);
   }
-  const end=4*(points.length-1);indices.push(0,2,3,0,3,1,end,end+1,end+3,end,end+3,end+2);
-  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));geometry.setIndex(indices);geometry.computeVertexNormals();
-  return new THREE.Mesh(geometry,benchMaterial);
 }
-function addBench([x1,y1,x2,y2,w,bend]){
-  const points=[];for(let i=0;i<=24;i++){const t=i/24;points.push(toWorld([x1*(1-t)+x2*t+4*bend*t*(1-t),y1*(1-t)+y2*t],0));}
-  const seatWidth=w*resolution;mapModels.add(makeRibbon(points,0,seatWidth,.39,.5));
-  mapModels.add(makeRibbon(points,-seatWidth/2+.035,.07,.5,.88));
-  for(const index of [4,20]){const p=points[index],prev=points[index-1],next=points[index+1],dx=next.x-prev.x,dz=next.z-prev.z,len=Math.hypot(dx,dz)||1;
-    for(const side of [-1,1]){const leg=new THREE.Mesh(legGeometry,legMaterial),offset=side*seatWidth*.32;leg.position.set(p.x-dz/len*offset,.19,p.z+dx/len*offset);mapModels.add(leg);}}
-}
-fetch('assets/map-objects.json?v=20261109-1').then(response=>{if(!response.ok)throw new Error('model positions');return response.json();}).then(objects=>{
+Promise.all([fetch('assets/map-objects.json?v=20261109-1').then(response=>{if(!response.ok)throw new Error('model positions');return response.json();}),new GLTFLoader().loadAsync('assets/airport-seat.glb?v=1')]).then(([objects,seat])=>{
   if(!Array.isArray(objects.pillars)||!Array.isArray(objects.benches))throw new Error('invalid model positions');
-  objects.pillars.forEach(addPillar);objects.benches.forEach(addBench);
+  objects.pillars.forEach(addPillar);objects.benches.forEach(row=>addBench(row,seat.scene));
   $('canvas').dataset.pillarCount=String(objects.pillars.length);$('canvas').dataset.benchCount=String(objects.benches.length);modelButton.disabled=false;
 }).catch(()=>{$('error').hidden=false;$('error').textContent='柱子和座椅模型加载失败，请刷新页面。';});
 const positions = data.trajectory.flatMap(p => { const v = toWorld(p); return [v.x, v.y, v.z]; });
 const pathGeometry = new THREE.BufferGeometry(); pathGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-const fullLine = new THREE.Line(pathGeometry, new THREE.LineBasicMaterial({color: 0x81a598, transparent:true, opacity:.4})); scene.add(fullLine);
+const fullLine = new THREE.Line(pathGeometry, new THREE.LineBasicMaterial({color: 0x8294aa, transparent:true, opacity:.4})); scene.add(fullLine);
 const playedGeometry = pathGeometry.clone(); playedGeometry.setDrawRange(0, 1);
-const playedLine = new THREE.Line(playedGeometry, new THREE.LineBasicMaterial({color: 0xb4ff77})); scene.add(playedLine);
+const playedLine = new THREE.Line(playedGeometry, new THREE.LineBasicMaterial({color: 0x2575e8})); scene.add(playedLine);
 // Photo-referenced Blender model. Motion is a visualization of recorded positions.
 const robot = new THREE.Group();robot.name='alphabot2-replay';scene.add(robot);
 let robotReady=false, followRobot=false, followMode=null, wheelAngle=0, wheelPivots=[];
@@ -83,7 +74,7 @@ new GLTFLoader().load('assets/alphabot2-reference-v7.glb?v=7',gltf=>{
   if(wheelPivots.length!==2){$('error').hidden=false;$('error').textContent='机器人模型已加载，但轮子未能正常加载。';}
   wheelPivots.forEach(wheel=>wheel.rotation.x=wheelAngle);robotReady=true;$('follow').disabled=false;$('eagle').disabled=false;
 },undefined,()=>{$('error').hidden=false;$('error').textContent='机器人模型加载失败，请刷新页面。';});
-const eagleRing=new THREE.Mesh(new THREE.RingGeometry(.72,.86,48),new THREE.MeshBasicMaterial({color:0xb4f477,transparent:true,opacity:.9,side:THREE.DoubleSide}));eagleRing.rotation.x=-Math.PI/2;eagleRing.position.y=.08;eagleRing.visible=false;robot.add(eagleRing);
+const eagleRing=new THREE.Mesh(new THREE.RingGeometry(.72,.86,48),new THREE.MeshBasicMaterial({color:0x2575e8,transparent:true,opacity:.9,side:THREE.DoubleSide}));eagleRing.rotation.x=-Math.PI/2;eagleRing.position.y=.08;eagleRing.visible=false;robot.add(eagleRing);
 function setFollow(on,mode='close'){
   followRobot=on;followMode=on?mode:null;$('canvas').dataset.followMode=followMode||'none';
   const close=on&&mode==='close',eagle=on&&mode==='eagle';
@@ -102,7 +93,7 @@ image.onload = () => {
   const source = document.createElement('canvas'); source.width = data.width; source.height = data.height;
   const ctx = source.getContext('2d', {willReadFrequently:true}); ctx.drawImage(image,0,0); const pixels = ctx.getImageData(0,0,data.width,data.height); const raw = pixels.data;
   const floor = ctx.createImageData(data.width,data.height), dst=floor.data;
-  for(let i=0;i<raw.length;i+=4){let v=raw[i]; if(v===205)continue; let wall=Math.max(0,Math.min(1,(155-v)/95)); dst[i]=21+wall*46;dst[i+1]=53+wall*68;dst[i+2]=40+wall*52;dst[i+3]=Math.round(105+wall*105);}
+  for(let i=0;i<raw.length;i+=4){let v=raw[i]; if(v===205)continue; let wall=Math.max(0,Math.min(1,(155-v)/95)); dst[i]=239-wall*85;dst[i+1]=243-wall*76;dst[i+2]=248-wall*65;dst[i+3]=Math.round(225+wall*30);}
   ctx.putImageData(floor,0,0);
   const texture = new THREE.CanvasTexture(source); texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
   const plane = new THREE.Mesh(new THREE.PlaneGeometry(width,height),new THREE.MeshBasicMaterial({map:texture,transparent:true,depthWrite:false,side:THREE.DoubleSide}));plane.rotation.x=-Math.PI/2;plane.position.y=0;scene.add(plane);
@@ -117,14 +108,14 @@ image.onload = () => {
   }
   const stride=4, cells=[];
   for(let y=0;y<data.height;y+=stride)for(let x=0;x<data.width;x+=stride){let min=255;for(let oy=0;oy<stride&&y+oy<data.height;oy++)for(let ox=0;ox<stride&&x+ox<data.width;ox++)min=Math.min(min,raw[((y+oy)*data.width+x+ox)*4]);if(min<78)cells.push([x,y]);}
-  originalWalls=buildInstances(cells,stride,false,0x6eb38b);scene.add(originalWalls);
+  originalWalls=buildInstances(cells,stride,false,0xaabbd1);scene.add(originalWalls);
   // Contours are joined into one continuous display mesh; the source raster remains unchanged.
   fetch('assets/wall-surfaces.bin?v=20261108-filter1')
     .then(response=>{if(!response.ok)throw new Error('Could not load wall surfaces');return response.arrayBuffer()})
     .then(buffer=>{
       const points=new Float32Array(buffer);if(points.length===0||points.length%9!==0)throw new Error('Invalid wall surface data');
       const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(points,3));geometry.computeVertexNormals();geometry.computeBoundingSphere();
-      enhancedWalls=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:0x84c89d,roughness:.85,metalness:.02,side:THREE.DoubleSide}));
+      enhancedWalls=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:0xb9c9dd,roughness:.85,metalness:.02,side:THREE.DoubleSide}));
       enhancedWalls.name='continuous-display-walls';scene.add(enhancedWalls);showWallMode(wallMode);
     })
     .catch(()=>{showWallMode('original');$('error').hidden=false;$('error').textContent='连续墙面加载失败，已显示原始墙体。'});
