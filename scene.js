@@ -104,6 +104,31 @@ $('follow').onclick=()=>{if(robotReady)setFollow(!(followRobot&&followMode==='cl
 $('eagle').onclick=()=>{if(robotReady)setFollow(!(followRobot&&followMode==='eagle'),'eagle')};
 
 let originalWalls, enhancedWalls; let wallMode = 'enhanced';
+// Fade only the patch of wall between the camera and the robot while following.
+const wallFocus={value:new THREE.Vector3()}, wallFadeEnabled={value:0};
+function prepareWallMaterial(material){
+  material.transparent=true;material.depthWrite=false;material.side=THREE.DoubleSide;
+  material.onBeforeCompile=shader=>{
+    shader.uniforms.wallFocus=wallFocus;shader.uniforms.wallFadeEnabled=wallFadeEnabled;
+    shader.vertexShader='varying vec3 vWallWorld;\n'+shader.vertexShader;
+    shader.vertexShader=shader.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+      vec4 wallWorld=vec4(transformed,1.0);
+      #ifdef USE_INSTANCING
+        wallWorld=instanceMatrix*wallWorld;
+      #endif
+      vWallWorld=(modelMatrix*wallWorld).xyz;`);
+    shader.fragmentShader='varying vec3 vWallWorld;\nuniform vec3 wallFocus;\nuniform float wallFadeEnabled;\n'+shader.fragmentShader;
+    shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>', `
+      vec3 sight=wallFocus-cameraPosition;
+      float sightLength=max(dot(sight,sight),0.0001);
+      float along=dot(vWallWorld-cameraPosition,sight)/sightLength;
+      vec3 nearest=cameraPosition+clamp(along,0.0,1.0)*sight;
+      float fade=(1.0-smoothstep(0.65,1.35,distance(vWallWorld,nearest)))*step(0.0,along)*step(along,0.995)*wallFadeEnabled;
+      diffuseColor.a*=1.0-0.82*fade;
+      #include <opaque_fragment>`);
+  };
+  return material;
+}
 function showWallMode(mode){if(mode==='enhanced'&&!enhancedWalls)return;wallMode=mode;if(originalWalls)originalWalls.visible=mode==='original';if(enhancedWalls)enhancedWalls.visible=mode==='enhanced';$('wall-enhanced').setAttribute('aria-pressed',String(mode==='enhanced'));$('wall-original').setAttribute('aria-pressed',String(mode==='original'));$('wall-key').hidden=mode!=='enhanced'}
 $('wall-enhanced').onclick=()=>showWallMode('enhanced');$('wall-original').onclick=()=>showWallMode('original');
 const image = new Image();
@@ -119,7 +144,7 @@ image.onload = () => {
   function buildInstances(cells, stride, rounded, color){
     const size=stride*resolution, wallHeight=2.8;
     const geometry=rounded?new RoundedBoxGeometry(size*1.04,wallHeight,size*1.04,2,size*.20):new THREE.BoxGeometry(size*1.04,wallHeight,size*1.04);
-    const material=new THREE.MeshStandardMaterial({color,roughness:.83,metalness:.04,transparent:true,opacity:.82});
+    const material=prepareWallMaterial(new THREE.MeshStandardMaterial({color,roughness:.83,metalness:.04,transparent:true,opacity:.82}));
     const mesh=new THREE.InstancedMesh(geometry,material,cells.length), transform=new THREE.Object3D();
     cells.forEach(([x,y],i)=>{transform.position.set((x+stride/2-data.width/2)*resolution,wallHeight/2,(y+stride/2-data.height/2)*resolution);transform.updateMatrix();mesh.setMatrixAt(i,transform.matrix)});
     mesh.instanceMatrix.needsUpdate=true;return mesh;
@@ -133,7 +158,7 @@ image.onload = () => {
     .then(buffer=>{
       const points=new Float32Array(buffer);if(points.length===0||points.length%9!==0)throw new Error('Invalid wall surface data');
       const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(points,3));geometry.computeVertexNormals();geometry.computeBoundingSphere();
-      enhancedWalls=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:0xb9c9dd,roughness:.85,metalness:.02,side:THREE.DoubleSide}));
+      enhancedWalls=new THREE.Mesh(geometry,prepareWallMaterial(new THREE.MeshStandardMaterial({color:0xb9c9dd,roughness:.85,metalness:.02,side:THREE.DoubleSide})));
       enhancedWalls.name='continuous-display-walls';scene.add(enhancedWalls);showWallMode(wallMode);
     })
     .catch(()=>{showWallMode('original');$('error').hidden=false;$('error').textContent='连续墙面加载失败，已显示原始墙体。'});
@@ -144,6 +169,7 @@ image.onerror=()=>{$('error').hidden=false;$('error').textContent='地图数据�
 image.src='assets/map.png';
 const totalDistance=cumulativeDistance[cumulativeDistance.length-1];
 let progress=0,playing=false,speed=.5,last=0;
+let targetYaw=0, yawInitialized=false, lastFrame=0;
 // Locate the segment by travelled distance, including repeated stationary points.
 function locateDistance(distance){
   let lo=0,hi=cumulativeDistance.length-1;
@@ -151,7 +177,7 @@ function locateDistance(distance){
   const a=lo,b=Math.min(a+1,cumulativeDistance.length-1),span=cumulativeDistance[b]-cumulativeDistance[a];
   return {a,b,f:span>0?(distance-cumulativeDistance[a])/span:0};
 }
-function drawProgress(){const count=data.trajectory.length;const distance=progress*totalDistance;const {a,b,f}=locateDistance(distance);updatePathSplit(a,b,f);$('canvas').dataset.distanceMeters=distance.toFixed(4);$('canvas').dataset.speedMps=String(speed);wheelAngle=distance/wheelRadius;wheelPivots.forEach(wheel=>wheel.rotation.x=wheelAngle);$('canvas').dataset.wheelAngle=wheelAngle.toFixed(5);const old=robot.position.clone();robot.position.copy(toWorld(data.trajectory[a],0)).lerp(toWorld(data.trajectory[b],0),f);const ahead=toWorld(data.trajectory[Math.min(count-1,b+5)],0),behind=toWorld(data.trajectory[Math.max(0,a-3)],0),direction=ahead.sub(behind);if(direction.lengthSq()>.0001)robot.rotation.y=Math.atan2(direction.x,direction.z);if(followRobot){const delta=robot.position.clone().sub(old);camera.position.add(delta);controls.target.add(delta)}$('canvas').dataset.robotXZ=robot.position.x.toFixed(3)+','+robot.position.z.toFixed(3);$('canvas').dataset.cameraXZ=camera.position.x.toFixed(3)+','+camera.position.z.toFixed(3);$('canvas').dataset.targetXZ=controls.target.x.toFixed(3)+','+controls.target.z.toFixed(3);const pct=Math.round(progress*100);$('seek').value=Math.round(progress*1000);$('percent').textContent=pct+'%';$('progress-label').textContent='回放进度 '+pct+'%';}
+function drawProgress(){const count=data.trajectory.length;const distance=progress*totalDistance;const {a,b,f}=locateDistance(distance);updatePathSplit(a,b,f);$('canvas').dataset.distanceMeters=distance.toFixed(4);$('canvas').dataset.speedMps=String(speed);wheelAngle=distance/wheelRadius;wheelPivots.forEach(wheel=>wheel.rotation.x=wheelAngle);$('canvas').dataset.wheelAngle=wheelAngle.toFixed(5);const old=robot.position.clone();robot.position.copy(toWorld(data.trajectory[a],0)).lerp(toWorld(data.trajectory[b],0),f);const ahead=toWorld(data.trajectory[Math.min(count-1,b+5)],0),behind=toWorld(data.trajectory[Math.max(0,a-3)],0),direction=ahead.sub(behind);if(direction.lengthSq()>.0001){targetYaw=Math.atan2(direction.x,direction.z);if(!yawInitialized){robot.rotation.y=targetYaw;yawInitialized=true;}}if(followRobot&&!playing){const delta=robot.position.clone().sub(old);camera.position.add(delta);controls.target.add(delta)}$('canvas').dataset.robotXZ=robot.position.x.toFixed(3)+','+robot.position.z.toFixed(3);$('canvas').dataset.cameraXZ=camera.position.x.toFixed(3)+','+camera.position.z.toFixed(3);$('canvas').dataset.targetXZ=controls.target.x.toFixed(3)+','+controls.target.z.toFixed(3);const pct=Math.round(progress*100);$('seek').value=Math.round(progress*1000);$('percent').textContent=pct+'%';$('progress-label').textContent='回放进度 '+pct+'%';}
 function setPlaying(on){playing=on;last=0;$('play').textContent=on?'❚❚':'▶';$('play').setAttribute('aria-label',on?'暂停轨迹':'播放轨迹');$('play-status').textContent=on?'· 正在回放':'· 已暂停'}
 $('play').onclick=()=>{if(progress>=1)progress=0;setPlaying(!playing);drawProgress()};$('seek').oninput=e=>{progress=Number(e.target.value)/1000;drawProgress()};document.querySelectorAll('.speed').forEach(b=>b.onclick=()=>{speed=Number(b.dataset.speed);$('canvas').dataset.speedMps=String(speed);document.querySelectorAll('.speed').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',String(x===b))})});
 function updateCameraLabels(){const radius=camera.position.distanceTo(controls.target);let tilt=Math.round(controls.getPolarAngle()*180/Math.PI), angle=Math.round(controls.getAzimuthalAngle()*180/Math.PI), distance=Math.round(radius/defaultDistance*100);$('tilt').value=tilt;$('rotation').value=angle;$('distance').value=distance;$('tilt-value').textContent=tilt+'°';$('rotation-value').textContent=angle+'°';$('distance-value').textContent=distance+'%'}
@@ -164,4 +190,20 @@ $('zoom-in').onclick=()=>setCamera(controls.getPolarAngle()*180/Math.PI,controls
 $('zoom-out').onclick=()=>setCamera(controls.getPolarAngle()*180/Math.PI,controls.getAzimuthalAngle()*180/Math.PI,camera.position.distanceTo(controls.target)*1.25);
 function resize(){let w=stage.clientWidth,h=stage.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
 new ResizeObserver(resize).observe(stage);resize();updateCameraLabels();drawProgress();
-function frame(t){if(playing){if(last)progress=totalDistance>0?Math.min(1,progress+(t-last)/1000*speed/totalDistance):1;last=t;drawProgress();if(progress>=1)setPlaying(false)}controls.update();renderer.autoClear=true;camera.layers.set(0);renderer.render(scene,camera);if(followRobot&&robotReady){renderer.autoClear=false;renderer.clearDepth();camera.layers.set(1);renderer.render(scene,camera);camera.layers.set(0)}requestAnimationFrame(frame)}requestAnimationFrame(frame);
+function frame(t){
+  const dt=lastFrame?Math.min((t-lastFrame)/1000,.1):0;lastFrame=t;
+  if(playing){if(last)progress=totalDistance>0?Math.min(1,progress+(t-last)/1000*speed/totalDistance):1;last=t;drawProgress();if(progress>=1)setPlaying(false)}
+  const diff=Math.atan2(Math.sin(targetYaw-robot.rotation.y),Math.cos(targetYaw-robot.rotation.y));
+  robot.rotation.y+=diff*(1-Math.exp(-7*dt));
+  if(followRobot){
+    const desired=robot.position.clone().add(new THREE.Vector3(0,followMode==='close'?.85:0,0));
+    const delta=desired.sub(controls.target);const distance=delta.length();
+    const factor=distance>.6?Math.max(1-Math.exp(-9*dt),1-.6/distance):1-Math.exp(-9*dt);
+    delta.multiplyScalar(factor);camera.position.add(delta);controls.target.add(delta);
+  }
+  controls.update();wallFocus.value.copy(robot.position).add(new THREE.Vector3(0,.95,0));wallFadeEnabled.value=followRobot&&robotReady?1:0;
+  renderer.autoClear=true;camera.layers.set(0);renderer.render(scene,camera);
+  // Preserve visibility through non-wall objects; wall patches themselves fade locally.
+  if(followRobot&&robotReady){renderer.autoClear=false;renderer.clearDepth();camera.layers.set(1);renderer.render(scene,camera);camera.layers.set(0)}
+  requestAnimationFrame(frame);
+}requestAnimationFrame(frame);
