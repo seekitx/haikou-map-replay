@@ -7,38 +7,99 @@
   const points = window.MAP_DATA.trajectory.map(([x, y]) => [x * 5 / 3 + 14, y * 5 / 3 - 15]);
   let replay = { a: 0, b: 1, f: 0 };
   const screenPoint = ([x, y]) => [offsetX + x * scale, offsetY + y * scale];
-  function drawRoute() {
-    const { a, b, f } = replay;
-    const point = [points[a][0] + (points[b][0] - points[a][0]) * f, points[a][1] + (points[b][1] - points[a][1]) * f];
-    const [rx, ry] = screenPoint(point);
-    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    function path(start, end, color, width, fromRobot, toRobot) {
-      ctx.beginPath();
-      if (fromRobot) ctx.moveTo(rx, ry);
-      else { const [x, y] = screenPoint(points[start]); ctx.moveTo(x, y); }
-      for (let i = fromRobot ? start : start + 1; i <= end; i++) { const [x, y] = screenPoint(points[i]); ctx.lineTo(x, y); }
-      if (toRobot) ctx.lineTo(rx, ry);
-      ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
+  const robotLayer = $('robot-layer'), taskMode = $('task-mode');
+  let selectedRobot = 'history';
+  const taskNames = { inspection: '巡检任务', collection: '收集任务', transport: '运输任务' };
+  const colors = { inspection: '#6c38cb', collection: '#2e7ff1', transport: '#25c8d6' };
+  const scenarios = {
+    inspection: [
+      {id:'history', name:'历史轨迹', task:'inspection', offset:0, battery:'—'},
+      {id:'demo-1', name:'演示机器人 01', task:'inspection', offset:.22, battery:'80%'},
+      {id:'demo-2', name:'演示机器人 02', task:'inspection', offset:.53, battery:'80%', warning:true}
+    ],
+    transport: [
+      {id:'history', name:'历史轨迹', task:'transport', offset:0, battery:'—', role:'头部'},
+      {id:'demo-1', name:'演示机器人 01', task:'transport', offset:-.018, battery:'80%', role:'尾部'}
+    ],
+    multi: [
+      {id:'history', name:'历史轨迹', task:'inspection', offset:0, battery:'—'},
+      {id:'demo-1', name:'演示机器人 01', task:'transport', offset:.23, battery:'80%', role:'头部'},
+      {id:'demo-2', name:'演示机器人 02', task:'transport', offset:.215, battery:'80%', role:'尾部'},
+      {id:'demo-3', name:'演示机器人 03', task:'collection', offset:.57, battery:'100%'},
+      {id:'demo-4', name:'演示机器人 04', task:'inspection', offset:.77, battery:'80%', warning:true}
+    ]
+  };
+  function rebuildMarkers() {
+    robotLayer.replaceChildren();
+    for (const robot of scenarios[taskMode.value]) {
+      const marker = document.createElement('button'); marker.type = 'button'; marker.className = 'robot-marker';
+      marker.dataset.robotId = robot.id; marker.dataset.selected = String(robot.id === selectedRobot);
+      marker.dataset.warning = String(!!robot.warning);
+      marker.setAttribute('aria-label', `${robot.name}，${taskNames[robot.task]}${robot.warning ? '，演示暂停' : ''}`);
+      marker.innerHTML = `<span class="direction" aria-hidden="true"></span><span class="robot-pin" aria-hidden="true">🤖</span><span class="robot-card"><span class="robot-card-row"><span>${robot.role ? robot.role + ' · ' : ''}${robot.name}</span><span class="battery">▣ ${robot.battery}</span></span><span class="robot-card-row"><span>${taskNames[robot.task]}</span><span class="robot-badge ${robot.warning ? 'warning' : ''}">${robot.id === 'history' ? '回放' : robot.warning ? '暂停中' : '演示中'}</span></span>${robot.warning ? '<span class="robot-card-row robot-alert">故障提示 · 演示</span>' : ''}</span>`;
+      marker.onclick = () => { selectedRobot = robot.id; for (const item of robotLayer.children) item.dataset.selected = String(item.dataset.robotId === selectedRobot); };
+      robotLayer.appendChild(marker);
     }
-    path(b, points.length - 1, 'rgba(89, 112, 137, .7)', 2, true, false);
-    path(0, a, '#176be5', 3, false, true);
-    const before = points[Math.max(0, a - 3)], after = points[Math.min(points.length - 1, b + 5)];
-    const angle = Math.atan2(after[1] - before[1], after[0] - before[0]);
-    ctx.save(); ctx.translate(rx, ry);
-    // Direction pointer rotates; the robot face stays upright and readable.
-    ctx.save(); ctx.rotate(angle); ctx.fillStyle = '#176be5'; ctx.beginPath();
-    ctx.moveTo(18, 0); ctx.lineTo(9, -5); ctx.lineTo(9, 5); ctx.closePath(); ctx.fill(); ctx.restore();
-    ctx.shadowColor = 'rgba(25, 69, 130, .3)'; ctx.shadowBlur = 7; ctx.shadowOffsetY = 2;
-    ctx.fillStyle = '#176be5'; ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2); ctx.fill();
-    ctx.shadowColor = 'transparent'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-3.8, -1.8, 1.5, 0, Math.PI * 2); ctx.arc(3.8, -1.8, 1.5, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(-3, 4); ctx.lineTo(3, 4); ctx.lineWidth = 1.4; ctx.stroke();
-    ctx.restore();
-    canvas.dataset.robotMapPosition = point.map(v => v.toFixed(2)).join(',');
+    draw();
   }
+  function drawRoute() {
+    const {a, b, f} = replay;
+    const current = [points[a][0] + (points[b][0] - points[a][0]) * f, points[a][1] + (points[b][1] - points[a][1]) * f];
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    function line(start, end, color, width) {
+      ctx.beginPath(); const [x,y] = screenPoint(points[start]); ctx.moveTo(x,y);
+      for (let i=start+1; i<=end; i++) {const [px,py]=screenPoint(points[i]);ctx.lineTo(px,py);}
+      ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();
+    }
+    const last=points.length-1;
+    line(0,last,'rgba(112, 121, 131, .43)',3);
+    if(taskMode.value==='multi') {
+      line(0,Math.floor(last*.34),colors.inspection,3);
+      line(Math.floor(last*.34),Math.floor(last*.67),colors.transport,3);
+      line(Math.floor(last*.67),last,colors.collection,3);
+    } else line(0,last,colors[taskMode.value],3);
+    line(0,a,'rgba(32, 94, 195, .9)',1.5);
+    const markers = robotLayer.children;
+    scenarios[taskMode.value].forEach((robot,i) => {
+      let point=current, headingIndex=a;
+      if(robot.id !== 'history') {
+        const index = (((robot.warning ? 0 : a + f) + robot.offset * last) % last + last) % last;
+        const lo=Math.floor(index), hi=Math.min(last,lo+1), t=index-lo;
+        headingIndex=lo;
+        point=[points[lo][0]+(points[hi][0]-points[lo][0])*t,points[lo][1]+(points[hi][1]-points[lo][1])*t];
+      }
+      const [x,y]=screenPoint(point), marker=markers[i];
+      marker.style.left=x+'px';marker.style.top=y+'px';
+      const prev=points[Math.max(0,headingIndex-3)], next=points[Math.min(last,headingIndex+5)];
+      marker.style.setProperty('--heading',Math.atan2(next[1]-prev[1],next[0]-prev[0])+'rad');
+      marker.hidden=x < -20 || y < -20 || x > canvas.clientWidth + 20 || y > canvas.clientHeight + 20;
+      const card=marker.querySelector('.robot-card');
+      card.style.left = x > canvas.clientWidth - 190 ? 'auto' : '28px';
+      card.style.right = x > canvas.clientWidth - 190 ? '28px' : 'auto';
+      card.style.bottom = y < 105 ? 'auto' : '18px';
+      card.style.top = y < 105 ? '18px' : 'auto';
+    });
+    canvas.dataset.robotMapPosition=current.map(v=>v.toFixed(2)).join(',');
+  }
+  taskMode.addEventListener('change', () => { selectedRobot='history'; rebuildMarkers(); });
+  $('show-zones').addEventListener('change', draw);
   window.addEventListener('map-replay-progress', event => { replay = event.detail; if (document.body.classList.contains('map2d-active')) draw(); });
   const bounds = { x: 47, y: 303, width: 1731, height: 1893 };
   let mode = 'clean', scale = 1, offsetX = 0, offsetY = 0, fitted = false, drag = null;
+  function drawLocations() {
+    if (!$('show-zones').checked) return;
+    const places = [{fraction:.10, name:'收集区 · 演示', color:'#45bbd6'}, {fraction:.42, name:'目标点 · 演示', color:'#a161d0'}, {fraction:.88, name:'充电点 · 演示', color:'#4f8eee'}];
+    ctx.save();ctx.font='10px -apple-system, BlinkMacSystemFont, sans-serif';ctx.textBaseline='middle';
+    for (const place of places) {
+      const [x,y]=screenPoint(points[Math.floor((points.length-1)*place.fraction)]);
+      ctx.fillStyle=place.color+'33';ctx.strokeStyle=place.color;ctx.lineWidth=1;
+      ctx.fillRect(x-9,y-9,18,18);ctx.strokeRect(x-9,y-9,18,18);
+      const width=ctx.measureText(place.name).width+8;
+      ctx.fillStyle='rgba(255,255,255,.9)';ctx.fillRect(x+10,y-8,width,16);
+      ctx.fillStyle='#516579';ctx.fillText(place.name,x+14,y);
+    }
+    ctx.restore();
+  }
   function draw() {
     const w = canvas.clientWidth, h = canvas.clientHeight, dpr = Math.min(devicePixelRatio || 1, 2);
     if (!w || !h) return;
@@ -47,6 +108,7 @@
     if (images[mode].complete && images[mode].naturalWidth) {
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(images[mode], offsetX, offsetY, images[mode].width * scale, images[mode].height * scale);
+      drawLocations();
       drawRoute();
     }
     canvas.dataset.zoom = scale.toFixed(4);
@@ -87,5 +149,6 @@
   }
   $('view-2d').addEventListener('click', () => setView(true)); $('view-3d').addEventListener('click', () => setView(false));
   new ResizeObserver(() => { if (document.body.classList.contains('map2d-active')) fit(); }).observe(stage);
+  rebuildMarkers();
   requestAnimationFrame(fit);
 })();
