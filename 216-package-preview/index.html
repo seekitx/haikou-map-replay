@@ -1,0 +1,1589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>机场运营平台 - haikou_T1/216 真实地图数据包解析预览</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+      background: #DCE1E8; color: #0F172A; user-select: none;
+    }
+
+    /* Canvas Stage */
+    #stage-wrap {
+      position: fixed; inset: 0;
+      cursor: grab; background: #DCE1E8;
+    }
+    #stage-wrap.dragging { cursor: grabbing; }
+    #map-canvas { display: block; width: 100%; height: 100%; }
+
+    /* Top Header & 7 Real-time KPIs */
+    .top-bar {
+      position: fixed; top: 12px; left: 16px; right: 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      pointer-events: none; z-index: 20;
+    }
+    .glass-panel {
+      pointer-events: auto;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(226, 232, 240, 0.95);
+      box-shadow: 0 8px 24px -6px rgba(15, 23, 42, 0.12);
+      border-radius: 12px;
+    }
+    .brand-selector {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 11px; flex-shrink: 0;
+    }
+    .brand-dot {
+      width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+      background: #2563EB; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+    }
+    .brand-title { font-size: 13px; font-weight: 700; color: #0F172A; white-space: nowrap; }
+    .brand-sub { font-size: 10.5px; color: #64748B; margin-top: 1px; white-space: nowrap; }
+    .map-badge {
+      font-size: 11px; font-weight: 600; color: #1D4ED8;
+      background: #EFF6FF; border: 1px solid #BFDBFE;
+      padding: 3px 8px; border-radius: 7px; white-space: nowrap; flex-shrink: 0;
+    }
+
+    /* Top Package Facts Strip (Real data from haikou_T1/216) */
+    .kpi-strip {
+      display: flex; align-items: center; gap: 5px; padding: 5px 7px; overflow-x: auto;
+    }
+    .kpi-item {
+      display: flex; flex-direction: column; align-items: center; flex-shrink: 0;
+      padding: 3px 8px; border-radius: 7px;
+      background: #F8FAFC; border: 1px solid #E2E8F0; white-space: nowrap;
+    }
+    .kpi-val { font-size: 12px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; color: #0F172A; }
+    .kpi-lbl { font-size: 9.5px; color: #64748B; margin-top: 1px; white-space: nowrap; }
+    .kpi-real .kpi-val { color: #059669; }
+    .kpi-accent .kpi-val { color: #2563EB; }
+    .kpi-pc .kpi-val { color: #0891B2; }
+    .kpi-empty .kpi-val { color: #94A3B8; }
+
+    /* Left Real Package & YAML Inspector Card */
+    .detail-card {
+      position: fixed; top: 66px; left: 16px; width: 304px; max-height: calc(100vh - 262px);
+      overflow-y: auto; z-index: 18; padding: 9px 11px; display: none;
+    }
+    .detail-card.open { display: block; }
+    .detail-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 5px; border-bottom: 1px solid #F1F5F9;
+    }
+    .detail-name { font-size: 12.5px; font-weight: 700; color: #0F172A; }
+    .detail-sn { font-size: 10px; color: #64748B; margin-top: 1px; }
+    .status-pill {
+      font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px;
+      background: #D1FAE5; color: #047857; white-space: nowrap;
+    }
+    .close-btn {
+      border: none; background: transparent; cursor: pointer;
+      color: #94A3B8; font-size: 16px; line-height: 1; padding: 3px;
+    }
+    .close-btn:hover { color: #334155; }
+
+    .detail-section { margin-top: 6px; display: flex; flex-direction: column; gap: 5px; }
+    .info-block {
+      background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 6px 8px;
+    }
+    .info-block-title {
+      font-size: 11px; font-weight: 700; color: #1E293B; margin-bottom: 3px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .yaml-pre {
+      background: #0F172A; color: #E2E8F0; border-radius: 6px; padding: 4px 7px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; line-height: 1.3;
+      white-space: pre-wrap; margin-bottom: 4px;
+    }
+    .detail-row {
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;
+      font-size: 10.5px; padding: 1.5px 0; color: #334155;
+    }
+    .detail-row .k { color: #64748B; flex-shrink: 0; }
+    .detail-row .v { font-weight: 600; color: #0F172A; text-align: right; word-break: break-all; }
+    .spot-item {
+      background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 7px; padding: 4px 7px;
+      margin-top: 3px; cursor: pointer; transition: border-color .15s, box-shadow .15s;
+    }
+    .spot-item:hover { border-color: #2563EB; box-shadow: 0 2px 8px rgba(37,99,235,0.12); }
+    .spot-item.selected { border-color: #059669; background: #ECFDF5; }
+    .spot-item-hdr { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #0F172A; }
+    .spot-item-meta { font-size: 10px; color: #475569; margin-top: 2px; font-family: monospace; }
+    .reopen-chip {
+      position: fixed; top: 72px; left: 16px; z-index: 17; padding: 7px 12px;
+      font-size: 12px; font-weight: 600; color: #1E293B; cursor: pointer; display: none;
+    }
+    .reopen-chip.visible { display: block; }
+
+    /* Bottom Left Layer Control Panel */
+    .layer-panel {
+      position: fixed; bottom: 16px; left: 16px; width: 304px;
+      padding: 9px 11px; z-index: 18;
+    }
+    .panel-title {
+      font-size: 12px; font-weight: 700; color: #0F172A;
+      margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .mode-switch {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 8px;
+    }
+    .mode-btn {
+      padding: 5px 4px; font-size: 11px; font-weight: 600; border-radius: 7px;
+      border: 1px solid #CBD5E1; background: #F8FAFC; color: #475569; cursor: pointer;
+      transition: all 0.15s; white-space: nowrap; text-align: center;
+    }
+    .mode-btn.active {
+      background: #2563EB; color: #FFFFFF; border-color: #2563EB;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+    }
+    .layer-list { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 8px; }
+    .chk-item {
+      display: flex; align-items: center; gap: 4px; font-size: 11px; color: #334155; cursor: pointer; white-space: nowrap;
+    }
+    .chk-item input { accent-color: #2563EB; cursor: pointer; }
+    .swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+
+    /* Top-Right Compass & Camera Attitude HUD */
+    .compass-card {
+      position: fixed; top: 68px; right: 16px;
+      padding: 7px 10px; display: flex; align-items: center; gap: 9px; z-index: 18;
+      cursor: pointer; transition: border-color .15s, box-shadow .15s;
+    }
+    .compass-card:hover { border-color: #93C5FD; box-shadow: 0 6px 20px rgba(37,99,235,0.14); }
+    .compass-meta { display: flex; flex-direction: column; gap: 2px; font-size: 10.5px; color: #475569; min-width: 92px; }
+    .compass-row { display: flex; justify-content: space-between; gap: 8px; }
+    .compass-row b { color: #0F172A; font-family: monospace; font-size: 11px; }
+
+    /* Bottom Right View Controls, YAML Metadata & Live Coordinate HUD */
+    .hud-panel {
+      position: fixed; bottom: 16px; right: 16px; max-width: 472px;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 7px; z-index: 18;
+    }
+    .view-controls {
+      width: 100%; display: flex; flex-direction: column; gap: 5px; padding: 8px 10px;
+    }
+    .ctrl-row {
+      display: flex; align-items: center; gap: 4px; flex-wrap: nowrap;
+    }
+    .ctrl-lbl {
+      font-size: 11px; font-weight: 600; color: #475569; min-width: 46px;
+    }
+    .ctrl-sep {
+      width: 1px; height: 15px; background: #E2E8F0; margin: 0 2px;
+    }
+    .dir-group { display: flex; align-items: center; gap: 3px; }
+    .range-sl {
+      width: 78px; accent-color: #2563EB; cursor: pointer; height: 15px;
+    }
+    .z-btn {
+      border: 1px solid #E2E8F0; background: #FFFFFF; color: #334155;
+      border-radius: 6px; padding: 3px 7px; font-size: 11px; font-weight: 600; cursor: pointer;
+      white-space: nowrap;
+    }
+    .z-btn:hover { background: #F1F5F9; border-color: #CBD5E1; }
+    .z-btn.active { background: #2563EB; color: #FFFFFF; border-color: #2563EB; }
+    .z-val { font-size: 11px; font-weight: 700; color: #0F172A; min-width: 38px; text-align: right; font-family: monospace; }
+
+    .yaml-hud {
+      width: 100%; padding: 7px 11px; font-size: 11px; line-height: 1.45; color: #334155;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      word-break: break-word;
+    }
+    .yaml-hud b { color: #0F172A; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+    .yaml-accent { color: #2563EB; font-weight: 700; }
+
+    /* Loading Toast */
+    #loading-badge {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      padding: 14px 22px; font-size: 13px; font-weight: 600; color: #1E293B; z-index: 50;
+    }
+  </style>
+</head>
+<body>
+
+<div id="stage-wrap">
+  <canvas id="map-canvas"></canvas>
+</div>
+
+<div id="loading-badge" class="glass-panel">正在解析 216/map.yaml 与融合 map.png + keepout.png 栅格...</div>
+
+<!-- Top Bar -->
+<div class="top-bar">
+  <div class="glass-panel brand-selector">
+    <div class="brand-dot"></div>
+    <div>
+      <div class="brand-title">海口 T1 · 216 实包地图</div>
+      <div class="brand-sub" id="yaml-summary">haikou_T1/216 · res=0.03m/px</div>
+    </div>
+    <span class="map-badge">纯实包 · 无模拟</span>
+  </div>
+
+  <div class="glass-panel kpi-strip" id="kpi-strip">
+    <div class="kpi-item"><span class="kpi-val" id="k-size">1845×2202</span><span class="kpi-lbl">map.png</span></div>
+    <div class="kpi-item"><span class="kpi-val" id="k-meters">55.35×66.06m</span><span class="kpi-lbl">物理范围</span></div>
+    <div class="kpi-item kpi-accent"><span class="kpi-val" id="k-res">0.03 m/px</span><span class="kpi-lbl">分辨率</span></div>
+    <div class="kpi-item kpi-pc"><span class="kpi-val" id="k-pts">读取中...</span><span class="kpi-lbl">pbstream点云</span></div>
+    <div class="kpi-item kpi-real"><span class="kpi-val" id="k-marks">1 (charge)</span><span class="kpi-lbl">mark_info</span></div>
+  </div>
+</div>
+
+<!-- Left Reopen Chip -->
+<button class="glass-panel reopen-chip" id="btn-reopen-info">📋 打开实包与 YAML 解析</button>
+
+<!-- Left Real Package & YAML Inspector Card -->
+<div class="glass-panel detail-card open" id="detail-card">
+  <div class="detail-hdr">
+    <div>
+      <div class="detail-name" id="d-name">haikou_T1 / 216 实包解析</div>
+      <div class="detail-sn" id="d-sn">仅保留原始数据包真实存在的点位与栅格</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span class="status-pill" id="d-pill">100% 实包</span>
+      <button class="close-btn" id="d-close" title="收起面板">×</button>
+    </div>
+  </div>
+  <div class="detail-section" id="d-body"></div>
+</div>
+
+<!-- Bottom-Left Layer & Beautification Panel -->
+<div class="glass-panel layer-panel">
+  <div class="panel-title">
+    <span>底图显示模式 &amp; 真实图层控制</span>
+    <span style="font-size:10.5px;color:#64748B;" id="build-time"></span>
+  </div>
+  <div class="mode-switch">
+    <button class="mode-btn active" id="btn-themed">融合美化</button>
+    <button class="mode-btn" id="btn-raw">原始 PNG</button>
+    <button class="mode-btn" id="btn-pointcloud">点云重建</button>
+  </div>
+  <div class="layer-list">
+    <label class="chk-item"><input type="checkbox" id="chk-keepout" /> <span class="swatch" style="background:#EF4444;"></span> keepout 禁行围栏</label>
+    <label class="chk-item"><input type="checkbox" id="chk-traffic" /> <span class="swatch" style="background:#F59E0B;"></span> traffic_keepout</label>
+    <label class="chk-item"><input type="checkbox" id="chk-spots" checked /> <span class="swatch" style="background:#059669;"></span> mark_info (charge)</label>
+    <label class="chk-item"><input type="checkbox" id="chk-endpose" checked /> <span class="swatch" style="background:#0284C7;"></span> scene.json (end_pose)</label>
+    <label class="chk-item"><input type="checkbox" id="chk-pc-overlay" /> <span class="swatch" style="background:#EC4899;"></span> pbstream 点云叠加</label>
+    <label class="chk-item"><input type="checkbox" id="chk-traj" /> <span class="swatch" style="background:#10B981;"></span> 建图轨迹 (2286帧)</label>
+    <label class="chk-item" style="grid-column: span 2;"><input type="checkbox" id="chk-grid" checked /> <span class="swatch" style="background:#94A3B8;"></span> 5m ROS 世界坐标网格 &amp; 原点 (0,0) / origin</label>
+  </div>
+</div>
+
+<!-- Top-Right Orientation & Altitude Compass Widget -->
+<div class="glass-panel compass-card" id="compass-reset" title="点击一键回正角度 (0°) 与 2D 俯视">
+  <svg viewBox="0 0 44 44" width="40" height="40">
+    <circle cx="22" cy="22" r="19" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+    <text x="22" y="9" text-anchor="middle" font-size="7" font-weight="700" fill="#DC2626">N</text>
+    <g id="compass-needle" transform="rotate(0 22 22)">
+      <polygon points="22,10 25,22 22,20 19,22" fill="#EF4444"/>
+      <polygon points="22,34 25,22 22,24 19,22" fill="#94A3B8"/>
+    </g>
+    <circle cx="22" cy="22" r="2.2" fill="#0F172A"/>
+  </svg>
+  <div class="compass-meta">
+    <div class="compass-row"><span>平面角度</span><b id="hud-angle">0°</b></div>
+    <div class="compass-row"><span>俯仰倾角</span><b id="hud-tilt">0°</b></div>
+    <div class="compass-row"><span>相机视高</span><b id="hud-alt">54.5m</b></div>
+  </div>
+</div>
+
+<!-- Bottom-Right View Controls (Pan / Altitude / Rotation / Tilt) & Coordinate HUD -->
+<div class="hud-panel">
+  <div class="glass-panel view-controls">
+    <div class="ctrl-row">
+      <span class="ctrl-lbl">位置移动</span>
+      <div class="dir-group">
+        <button class="z-btn" id="btn-pan-up" title="向上移动视野 (↑)">↑</button>
+        <button class="z-btn" id="btn-pan-down" title="向下移动视野 (↓)">↓</button>
+        <button class="z-btn" id="btn-pan-left" title="向左移动视野 (←)">←</button>
+        <button class="z-btn" id="btn-pan-right" title="向右移动视野 (→)">→</button>
+      </div>
+      <span class="ctrl-sep"></span>
+      <span class="ctrl-lbl">高度缩放</span>
+      <button class="z-btn" id="btn-zoom-out" title="升高视点 / 缩小">－</button>
+      <input type="range" class="range-sl" id="sl-scale" min="25" max="250" step="1" value="55" title="调节相机高度与缩放比例" />
+      <button class="z-btn" id="btn-zoom-in" title="降低视点 / 放大">＋</button>
+      <span class="z-val" id="zoom-pct">55%</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-lbl">旋转角度</span>
+      <button class="z-btn" id="btn-rot-ccw" title="逆时针旋转 90°">↶ -90°</button>
+      <input type="range" class="range-sl" id="sl-angle" min="-180" max="180" step="1" value="0" title="自由旋转地图平面角度 (-180° ~ +180°)" />
+      <button class="z-btn" id="btn-rot-cw" title="顺时针旋转 90°">↷ +90°</button>
+      <button class="z-btn" id="btn-rot-figma" title="对齐 Figma 横版朝向 (-90°)">横版</button>
+      <button class="z-btn" id="btn-rot-zero" title="旋转角度归零 (0°)">0°</button>
+      <span class="z-val" id="angle-val">0°</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-lbl">俯仰角度</span>
+      <button class="z-btn active" id="btn-tilt-2d" title="2D 正射俯视 (0°)">2D正射</button>
+      <input type="range" class="range-sl" id="sl-tilt" min="0" max="55" step="1" value="0" title="调节上下俯仰倾角 (0° 平视地图 ~ 55° 2.5D 俯瞰)" />
+      <button class="z-btn" id="btn-tilt-3d" title="2.5D 立体俯瞰 (35°)">35°俯瞰</button>
+      <span class="z-val" id="tilt-val">0°</span>
+      <span class="ctrl-sep"></span>
+      <button class="z-btn" id="btn-fit">适应大厅</button>
+      <button class="z-btn" id="btn-reset-all" title="恢复默认 0° 正射居中">全部复位</button>
+    </div>
+  </div>
+  <div class="glass-panel yaml-hud">
+    <div><b>map.yaml 基准</b>：<span id="hud-yaml">读取 ./216/map.yaml 中...</span></div>
+    <div><b>真实 mark_info.data</b>：<span class="yaml-accent" id="hud-mark">解析 Protobuf 二进制中...</span></div>
+    <div><b>鼠标实时坐标</b>：<span id="hud-cursor">移动鼠标查看像素 (u,v) ↔ 世界坐标 (x_w, y_w)</span></div>
+    <div style="color:#64748B;font-size:10.5px;">交互提示：左键拖拽上下左右移动 · 右键/Shift拖拽调旋转与俯仰 · 滚轮高度缩放 · 方向键微调</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const canvas = document.getElementById('map-canvas');
+  const ctx = canvas.getContext('2d');
+  const stageWrap = document.getElementById('stage-wrap');
+
+  const state = {
+    yaml: { image: 'map.png', resolution: 0.03, originX: -9.850273132324219, originY: -37.89333251953125, originTheta: 0 },
+    yamlRawText: '',
+    width: 1845,
+    height: 2202,
+    rawCanvas: null,
+    themedCanvas: null,
+    pointCloudBaseCanvas: null,
+    pointCloudOverlayCanvas: null,
+    pbstreamTraj: null,
+    keepoutCanvas: null,
+    trafficCanvas: null,
+    mode: 'themed', // 'themed' | 'raw' | 'pointcloud'
+    layers: {
+      keepout: false,
+      traffic: false,
+      spots: true,
+      endPose: true,
+      pcOverlay: false,
+      pcTraj: false,
+      grid: true,
+    },
+    view: { scale: 0.55, panX: 0, panY: 0, angleDeg: 0, tiltDeg: 0 },
+    hoverPx: null,
+    realSpots: [],
+    selectedSpotId: 'charge',
+    packageAudit: {
+      navAreaBytes: null,
+      pathInfoBytes: null,
+      markVersion: '',
+      pbNodes: 0,
+      pbPoints: 0,
+      pbNearWallPct: 0,
+    },
+  };
+
+  let rafPending = false;
+  function requestRender() {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      renderFrame();
+    });
+  }
+
+  function getViewTrig() {
+    const angleRad = (state.view.angleDeg * Math.PI) / 180;
+    const tiltRad = (state.view.tiltDeg * Math.PI) / 180;
+    return {
+      ax: state.width / 2,
+      ay: state.height / 2,
+      cosA: Math.cos(angleRad),
+      sinA: Math.sin(angleRad),
+      cosT: Math.max(0.35, Math.cos(tiltRad)),
+      angleRad,
+      tiltRad,
+    };
+  }
+
+  // 世界坐标 <-> SLAM 像素坐标 <-> 屏幕视口（含旋转 angleDeg 与俯仰 tiltDeg）映射公式
+  function worldToPx(xw, yw) {
+    return {
+      u: (xw - state.yaml.originX) / state.yaml.resolution,
+      v: state.height - (yw - state.yaml.originY) / state.yaml.resolution,
+    };
+  }
+  function pxToWorld(u, v) {
+    return {
+      xw: state.yaml.originX + u * state.yaml.resolution,
+      yw: state.yaml.originY + (state.height - v) * state.yaml.resolution,
+    };
+  }
+  function pxToScreen(u, v) {
+    const { ax, ay, cosA, sinA, cosT } = getViewTrig();
+    const du = u - ax;
+    const dv = v - ay;
+    const rx = du * cosA - dv * sinA;
+    const ry = du * sinA + dv * cosA;
+    return {
+      sx: state.view.panX + rx * state.view.scale,
+      sy: state.view.panY + ry * state.view.scale * cosT,
+    };
+  }
+  function screenToPx(sx, sy) {
+    const { ax, ay, cosA, sinA, cosT } = getViewTrig();
+    const rx = (sx - state.view.panX) / state.view.scale;
+    const ry = (sy - state.view.panY) / (state.view.scale * cosT);
+    const du = rx * cosA + ry * sinA;
+    const dv = -rx * sinA + ry * cosA;
+    return {
+      u: ax + du,
+      v: ay + dv,
+    };
+  }
+  function preserveScreenPoint(screenX, screenY, mutateFn) {
+    const mapPt = screenToPx(screenX, screenY);
+    mutateFn();
+    const s = pxToScreen(mapPt.u, mapPt.v);
+    state.view.panX += (screenX - s.sx);
+    state.view.panY += (screenY - s.sy);
+  }
+  function getOpenViewportCenter() {
+    const cw = canvas.clientWidth;
+    const ch = canvas.clientHeight;
+    const cardOpen = document.getElementById('detail-card').classList.contains('open');
+    const leftMargin = cardOpen ? 340 : 24;
+    return {
+      cx: leftMargin + Math.max(200, cw - leftMargin - 40) / 2,
+      cy: Math.max(120, ch - 60) / 2,
+    };
+  }
+
+  // 解析 map.yaml 原文（提取 image / resolution / origin）
+  function parseYaml(text) {
+    state.yamlRawText = text.trim();
+    const lines = text.split(/\r?\n/);
+    let image = state.yaml.image;
+    let res = state.yaml.resolution;
+    const origin = [];
+    let inOrigin = false;
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      if (line.startsWith('image:')) {
+        image = line.slice(6).trim();
+        inOrigin = false;
+      } else if (line.startsWith('resolution:')) {
+        res = parseFloat(line.split(':')[1].trim());
+        inOrigin = false;
+      } else if (line.startsWith('origin:')) {
+        const rest = line.slice(7).trim();
+        if (rest.startsWith('[') && rest.endsWith(']')) {
+          rest.slice(1, -1).split(',').forEach(v => origin.push(parseFloat(v.trim())));
+          inOrigin = false;
+        } else {
+          inOrigin = true;
+        }
+      } else if (inOrigin && line.startsWith('-')) {
+        origin.push(parseFloat(line.slice(1).trim()));
+      } else {
+        inOrigin = false;
+      }
+    }
+    state.yaml.image = image;
+    state.yaml.resolution = res;
+    if (origin.length >= 2) {
+      state.yaml.originX = origin[0];
+      state.yaml.originY = origin[1];
+      state.yaml.originTheta = origin[2] || 0;
+    }
+  }
+
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
+  // 核心后端/前端预处理演示：基于 map.png + keepout.png 融合建图与漫水填充座椅岛
+  function buildLayers(mapImg, keepImg, trafficImg) {
+    const t0 = performance.now();
+    const w = mapImg.width;
+    const h = mapImg.height;
+    state.width = w;
+    state.height = h;
+    const N = w * h;
+
+    // 1. Raw SLAM canvas
+    const rawC = document.createElement('canvas');
+    rawC.width = w; rawC.height = h;
+    const rawCtx = rawC.getContext('2d');
+    rawCtx.drawImage(mapImg, 0, 0);
+    const mapData = rawCtx.getImageData(0, 0, w, h).data;
+
+    // Read keepout & traffic pixels
+    const tmpC = document.createElement('canvas');
+    tmpC.width = w; tmpC.height = h;
+    const tmpCtx = tmpC.getContext('2d');
+    tmpCtx.drawImage(keepImg, 0, 0);
+    const keepData = tmpCtx.getImageData(0, 0, w, h).data;
+
+    tmpCtx.clearRect(0, 0, w, h);
+    tmpCtx.drawImage(trafficImg, 0, 0);
+    const trafData = tmpCtx.getImageData(0, 0, w, h).data;
+
+    // 2. Step A: Find main walkable terminal floor from seed (860, 910) to remove external stray laser rays
+    const walkableMain = new Uint8Array(N);
+    const queue = new Int32Array(N);
+    let qh = 0, qt = 0;
+    const seedIdx = 910 * w + 860;
+    if (mapData[seedIdx * 4] >= 240) {
+      walkableMain[seedIdx] = 1;
+      queue[qt++] = seedIdx;
+    }
+    while (qh < qt) {
+      const cur = queue[qh++];
+      const x = cur % w;
+      const y = (cur - x) / w;
+      if (x > 0) { const n = cur - 1; if (!walkableMain[n] && mapData[n * 4] >= 240) { walkableMain[n] = 1; queue[qt++] = n; } }
+      if (x + 1 < w) { const n = cur + 1; if (!walkableMain[n] && mapData[n * 4] >= 240) { walkableMain[n] = 1; queue[qt++] = n; } }
+      if (y > 0) { const n = cur - w; if (!walkableMain[n] && mapData[n * 4] >= 240) { walkableMain[n] = 1; queue[qt++] = n; } }
+      if (y + 1 < h) { const n = cur + w; if (!walkableMain[n] && mapData[n * 4] >= 240) { walkableMain[n] = 1; queue[qt++] = n; } }
+    }
+
+    // 3. Step B: Flood fill closed islands inside keepout.png (seats & counters)
+    // Closed region with 400 <= area <= 24000 and majority walkable inside => solid seat island!
+    const visK = new Uint8Array(N);
+    const islandMask = new Uint8Array(N);
+    const compList = new Int32Array(N);
+    for (let i = 0; i < N; i++) {
+      if (visK[i] || keepData[i * 4] < 175) continue;
+      visK[i] = 1;
+      let cq = 0, ct = 0, walkCnt = 0;
+      compList[ct++] = i;
+      while (cq < ct) {
+        const cur = compList[cq++];
+        if (walkableMain[cur]) walkCnt++;
+        const x = cur % w;
+        const y = (cur - x) / w;
+        if (x > 0) { const n = cur - 1; if (!visK[n] && keepData[n * 4] >= 175) { visK[n] = 1; compList[ct++] = n; } }
+        if (x + 1 < w) { const n = cur + 1; if (!visK[n] && keepData[n * 4] >= 175) { visK[n] = 1; compList[ct++] = n; } }
+        if (y > 0) { const n = cur - w; if (!visK[n] && keepData[n * 4] >= 175) { visK[n] = 1; compList[ct++] = n; } }
+        if (y + 1 < h) { const n = cur + w; if (!visK[n] && keepData[n * 4] >= 175) { visK[n] = 1; compList[ct++] = n; } }
+      }
+      if (ct >= 350 && ct <= 24000 && walkCnt > ct * 0.52) {
+        for (let j = 0; j < ct; j++) islandMask[compList[j]] = 1;
+      }
+    }
+
+    // 4. Step C: Fill small interior gray pillars bounded by walls (non-exterior unknown gray < 6000px)
+    const extUnknown = new Uint8Array(N);
+    qh = 0; qt = 0;
+    extUnknown[0] = 1;
+    queue[qt++] = 0;
+    while (qh < qt) {
+      const cur = queue[qh++];
+      const x = cur % w;
+      const y = (cur - x) / w;
+      const pushIf = (n) => {
+        if (!extUnknown[n] && !walkableMain[n] && mapData[n * 4] >= 110) {
+          extUnknown[n] = 1;
+          queue[qt++] = n;
+        }
+      };
+      if (x > 0) pushIf(cur - 1);
+      if (x + 1 < w) pushIf(cur + 1);
+      if (y > 0) pushIf(cur - w);
+      if (y + 1 < h) pushIf(cur + w);
+    }
+
+    // 5. Render Figma-themed map pixels
+    const themedC = document.createElement('canvas');
+    themedC.width = w; themedC.height = h;
+    const themedCtx = themedC.getContext('2d');
+    const outImg = themedCtx.createImageData(w, h);
+    const out = outImg.data;
+
+    // Overlay canvases for keepout & traffic
+    const keepOvC = document.createElement('canvas'); keepOvC.width = w; keepOvC.height = h;
+    const keepOvCtx = keepOvC.getContext('2d');
+    const keepOvImg = keepOvCtx.createImageData(w, h);
+
+    const trafOvC = document.createElement('canvas'); trafOvC.width = w; trafOvC.height = h;
+    const trafOvCtx = trafOvC.getContext('2d');
+    const trafOvImg = trafOvCtx.createImageData(w, h);
+
+    for (let i = 0; i < N; i++) {
+      const p4 = i * 4;
+      const mVal = mapData[p4];
+      const kVal = keepData[p4];
+      const tVal = trafData[p4];
+
+      // Overlay layers
+      if (kVal < 120) {
+        keepOvImg.data[p4] = 239; keepOvImg.data[p4 + 1] = 68; keepOvImg.data[p4 + 2] = 68; keepOvImg.data[p4 + 3] = 200;
+      }
+      if (tVal < 120) {
+        trafOvImg.data[p4] = 245; trafOvImg.data[p4 + 1] = 158; trafOvImg.data[p4 + 2] = 11; trafOvImg.data[p4 + 3] = 210;
+      }
+
+      // Base Theme Colors (Figma palette)
+      if (islandMask[i]) {
+        // 座椅实体岛填充灰 + 检查边缘加深描边
+        const x = i % w; const y = (i - x) / w;
+        const isEdge = (x > 0 && !islandMask[i - 1]) || (x + 1 < w && !islandMask[i + 1]) ||
+                       (y > 0 && !islandMask[i - w]) || (y + 1 < h && !islandMask[i + w]);
+        if (isEdge) {
+          out[p4] = 30; out[p4 + 1] = 41; out[p4 + 2] = 59; out[p4 + 3] = 255; // #1E293B
+        } else {
+          out[p4] = 148; out[p4 + 1] = 155; out[p4 + 2] = 166; out[p4 + 3] = 255; // #949BA6
+        }
+      } else if (mVal < 95) {
+        // 检查是否为大厅中间散落的座椅细碎散点（如果附近是 walkable 且不连大墙，或者只保留主墙与柱体）
+        // 简单邻域检查：若上下左右 walkable 占比极高且距离外墙远处属于座椅散点，保留立柱、削弱座椅散点
+        out[p4] = 30; out[p4 + 1] = 41; out[p4 + 2] = 59; out[p4 + 3] = 255; // #1E293B
+      } else if (walkableMain[i]) {
+        out[p4] = 255; out[p4 + 1] = 255; out[p4 + 2] = 255; out[p4 + 3] = 255; // #FFFFFF walkable
+      } else if (!extUnknown[i] && mVal >= 110) {
+        // 候机厅内部立柱/结构暗灰填充
+        out[p4] = 160; out[p4 + 1] = 168; out[p4 + 2] = 180; out[p4 + 3] = 255;
+      } else {
+        // 外部未知区 #DCE1E8
+        out[p4] = 220; out[p4 + 1] = 225; out[p4 + 2] = 232; out[p4 + 3] = 255;
+      }
+    }
+
+    // 清理位于可通行白色走廊内部、紧邻座椅岛外部的零散 1~2px 激光黑点噪点
+    const cleanOut = new Uint8ClampedArray(out);
+    for (let y = 2; y < h - 2; y++) {
+      for (let x = 2; x < w - 2; x++) {
+        const i = y * w + x;
+        if (out[i * 4] === 30 && !islandMask[i]) {
+          // 统计 5x5 邻域黑色像素数量；小于等于 7 个则视为散点椅子腿噪点抹白
+          let blackCnt = 0;
+          for (let dy = -2; dy <= 2; dy++) {
+            for (let dx = -2; dx <= 2; dx++) {
+              if (out[((y + dy) * w + (x + dx)) * 4] === 30) blackCnt++;
+            }
+          }
+          if (blackCnt <= 8) {
+            cleanOut[i * 4] = 255; cleanOut[i * 4 + 1] = 255; cleanOut[i * 4 + 2] = 255;
+          }
+        }
+      }
+    }
+    outImg.data.set(cleanOut);
+    themedCtx.putImageData(outImg, 0, 0);
+    keepOvCtx.putImageData(keepOvImg, 0, 0);
+    trafOvCtx.putImageData(trafOvImg, 0, 0);
+
+    state.rawCanvas = rawC;
+    state.themedCanvas = themedC;
+    state.keepoutCanvas = keepOvC;
+    state.trafficCanvas = trafOvC;
+    state._rawGrayData = mapData;
+    document.getElementById('build-time').textContent = `预处理耗时 ${Math.round(performance.now() - t0)} ms`;
+  }
+
+  // 解析从 216.pbstream 提取的全局点云与建图轨迹 (PBPC 二进制)，构建独立点云视图与透明叠加层
+  function buildPointCloudLayers(pcBuffer) {
+    const dv = new DataView(pcBuffer);
+    const magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
+    if (magic !== 'PBPC') throw new Error('Invalid pbstream_cloud.bin header');
+    const numTraj = dv.getUint32(4, true);
+    const numPts = dv.getUint32(8, true);
+
+    const trajFloats = new Float32Array(pcBuffer, 16, numTraj * 3);
+    const ptsFloats = new Float32Array(pcBuffer, 16 + numTraj * 12, numPts * 3);
+    state.pbstreamTraj = trajFloats;
+    state.packageAudit.pbNodes = numTraj;
+    state.packageAudit.pbPoints = numPts;
+
+    const w = state.width;
+    const h = state.height;
+    const ox = state.yaml.originX;
+    const oy = state.yaml.originY;
+    const res = state.yaml.resolution;
+    const rawData = state._rawGrayData;
+
+    const hitCount = new Uint16Array(w * h);
+    let nearWallHits = 0;
+
+    for (let i = 0; i < numPts; i++) {
+      const wx = ptsFloats[i * 3];
+      const wy = ptsFloats[i * 3 + 1];
+      const u = Math.round((wx - ox) / res);
+      const v = Math.round(h - (wy - oy) / res);
+      if (u >= 0 && u < w && v >= 0 && v < h) {
+        const idx = v * w + u;
+        if (hitCount[idx] < 65535) hitCount[idx]++;
+        if (rawData) {
+          let matched = false;
+          for (let dy = -1; dy <= 1 && !matched; dy++) {
+            const yy = v + dy;
+            if (yy < 0 || yy >= h) continue;
+            for (let dx = -1; dx <= 1; dx++) {
+              const xx = u + dx;
+              if (xx >= 0 && xx < w && rawData[(yy * w + xx) * 4] < 95) {
+                matched = true;
+                break;
+              }
+            }
+          }
+          if (matched) nearWallHits++;
+        }
+      }
+    }
+    state.packageAudit.pbNearWallPct = numPts > 0 ? ((nearWallHits / numPts) * 100).toFixed(1) : '0.0';
+
+    const pcBaseC = document.createElement('canvas');
+    pcBaseC.width = w; pcBaseC.height = h;
+    const pcBaseCtx = pcBaseC.getContext('2d');
+    const pcBaseImg = pcBaseCtx.createImageData(w, h);
+    const bd = pcBaseImg.data;
+
+    // Fill #0B1220 radar background
+    for (let i = 0; i < w * h; i++) {
+      const p4 = i * 4;
+      bd[p4] = 11; bd[p4 + 1] = 18; bd[p4 + 2] = 32; bd[p4 + 3] = 255;
+    }
+
+    const pcOvC = document.createElement('canvas');
+    pcOvC.width = w; pcOvC.height = h;
+    const pcOvCtx = pcOvC.getContext('2d');
+    const pcOvImg = pcOvCtx.createImageData(w, h);
+    const od = pcOvImg.data;
+
+    function paintBase(x, y, r, g, b, a) {
+      if (x < 0 || x >= w || y < 0 || y >= h) return;
+      const p4 = (y * w + x) * 4;
+      bd[p4] = r; bd[p4 + 1] = g; bd[p4 + 2] = b; bd[p4 + 3] = a;
+    }
+    function paintOv(x, y, r, g, b, a) {
+      if (x < 0 || x >= w || y < 0 || y >= h) return;
+      const p4 = (y * w + x) * 4;
+      if (od[p4 + 3] < a) {
+        od[p4] = r; od[p4 + 1] = g; od[p4 + 2] = b; od[p4 + 3] = a;
+      }
+    }
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const c = hitCount[y * w + x];
+        if (c === 0) continue;
+        let r, g, b;
+        if (c >= 12) { r = 254; g = 240; b = 138; }      // #FEF08A 高密核心墙柱
+        else if (c >= 5) { r = 52; g = 211; b = 153; }  // #34D399 中高密结构
+        else if (c >= 2) { r = 34; g = 211; b = 238; }  // #22D3EE 常规激光命中
+        else { r = 56; g = 189; b = 248; }              // #38BDF8 稀疏/瞬态散点
+
+        // 1px exact core + subtle 2x2 glow on empty right/bottom pixels so 50% zoom stays crisp
+        paintBase(x, y, r, g, b, 255);
+        if (x + 1 < w && hitCount[y * w + x + 1] === 0) paintBase(x + 1, y, r, g, b, 255);
+        if (y + 1 < h && hitCount[(y + 1) * w + x] === 0) paintBase(x, y + 1, r, g, b, 255);
+
+        // High-contrast magenta/cyan overlay over light map.png
+        if (c >= 4) paintOv(x, y, 219, 39, 119, 220);   // #DB2777
+        else paintOv(x, y, 6, 182, 212, 185);           // #06B6D4
+      }
+    }
+
+    pcBaseCtx.putImageData(pcBaseImg, 0, 0);
+    pcOvCtx.putImageData(pcOvImg, 0, 0);
+    state.pointCloudBaseCanvas = pcBaseC;
+    state.pointCloudOverlayCanvas = pcOvC;
+  }
+
+  // 在浏览器内直接二进制解码 216/mark_info.data（Protobuf Wire Format，零外部依赖、零写死坐标）
+  function readPbFields(u8, start = 0, end = u8.length) {
+    const fields = [];
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    let i = start;
+    function readVarint() {
+      let val = 0;
+      let shift = 0;
+      while (i < end) {
+        const b = u8[i++];
+        val += (b & 0x7f) * (2 ** shift);
+        if (!(b & 0x80)) return val;
+        shift += 7;
+      }
+      return val;
+    }
+    while (i < end) {
+      const tag = readVarint();
+      const fn = tag >> 3;
+      const wt = tag & 7;
+      if (wt === 0) {
+        fields.push({ fn, wt, val: readVarint() });
+      } else if (wt === 1) {
+        fields.push({ fn, wt, val: dv.getFloat64(i, true) });
+        i += 8;
+      } else if (wt === 2) {
+        const len = readVarint();
+        fields.push({ fn, wt, sub: u8.subarray(i, i + len) });
+        i += len;
+      } else if (wt === 5) {
+        fields.push({ fn, wt, val: dv.getFloat32(i, true) });
+        i += 4;
+      } else {
+        break;
+      }
+    }
+    return fields;
+  }
+
+  function parseMarkInfoProtobuf(arrayBuffer) {
+    const td = new TextDecoder('utf-8');
+    const u8 = new Uint8Array(arrayBuffer);
+    const root = readPbFields(u8);
+    let version = '';
+    const marks = [];
+
+    for (const f of root) {
+      if (f.fn === 2 && f.wt === 2) {
+        version = td.decode(f.sub);
+      } else if (f.fn === 11 && f.wt === 2) {
+        const itemFields = readPbFields(f.sub);
+        let markId = 0;
+        let markName = '';
+        let xw = 0, yw = 0, theta = 0;
+        for (const it of itemFields) {
+          if (it.fn === 1 && it.wt === 2) {
+            for (const hdr of readPbFields(it.sub)) {
+              if (hdr.fn === 1 && hdr.wt === 0) markId = hdr.val;
+              if (hdr.fn === 2 && hdr.wt === 2) markName = td.decode(hdr.sub);
+            }
+          } else if (it.fn === 2 && it.wt === 2) {
+            for (const poseWrap of readPbFields(it.sub)) {
+              if (poseWrap.fn === 1 && poseWrap.wt === 2) {
+                for (const coord of readPbFields(poseWrap.sub)) {
+                  if (coord.fn === 1 && coord.wt === 5) xw = coord.val;
+                  if (coord.fn === 2 && coord.wt === 5) yw = coord.val;
+                  if (coord.fn === 3 && coord.wt === 5) theta = coord.val;
+                }
+              }
+            }
+          }
+        }
+        if (markName) {
+          marks.push({
+            id: markName,
+            markId,
+            name: markName,
+            source: '216/mark_info.data',
+            kind: 'mark',
+            xw,
+            yw,
+            theta,
+          });
+        }
+      }
+    }
+    return { version, marks };
+  }
+
+  function focusWorldPoint(xw, yw, minScale = 1.05) {
+    const px = worldToPx(xw, yw);
+    const c = getOpenViewportCenter();
+    if (state.view.scale < minScale) {
+      state.view.scale = minScale;
+    }
+    const cur = pxToScreen(px.u, px.v);
+    state.view.panX += (c.cx - cur.sx);
+    state.view.panY += (c.cy - cur.sy);
+    syncViewHud();
+    requestRender();
+  }
+
+  function renderPackageInfoCard() {
+    const body = document.getElementById('d-body');
+    const physW = (state.width * state.yaml.resolution).toFixed(2);
+    const physH = (state.height * state.yaml.resolution).toFixed(2);
+    const navStr = state.packageAudit.navAreaBytes != null ? `${state.packageAudit.navAreaBytes} B` : '—';
+    const pathStr = state.packageAudit.pathInfoBytes != null ? `${state.packageAudit.pathInfoBytes} B` : '—';
+
+    let spotsHtml = '';
+    for (const sp of state.realSpots) {
+      const px = worldToPx(sp.xw, sp.yw);
+      const isSel = state.selectedSpotId === sp.id;
+      const deg = ((sp.theta * 180) / Math.PI).toFixed(1);
+      spotsHtml += `
+        <div class="spot-item ${isSel ? 'selected' : ''}" data-spot-id="${sp.id}" title="点击定位到该实包点位">
+          <div class="spot-item-hdr">
+            <span>${sp.kind === 'mark' ? '⚡' : '📍'} ${sp.name}</span>
+            <span style="color:${sp.kind === 'mark' ? '#059669' : '#0284C7'};font-size:10.5px;">${sp.source}</span>
+          </div>
+          <div class="spot-item-meta">ROS: (${sp.xw.toFixed(3)}, ${sp.yw.toFixed(3)}) m · θ=${sp.theta.toFixed(3)} rad (${deg}°)</div>
+          <div class="spot-item-meta">像素: (u=${px.u.toFixed(1)}, v=${px.v.toFixed(1)}) px${sp.markId ? ` · ID=${sp.markId}` : ''}</div>
+        </div>
+      `;
+    }
+
+    body.innerHTML = `
+      <div class="info-block">
+        <div class="info-block-title"><span>1. map.yaml 原文与含义解析</span><span>${state.packageAudit.markVersion ? 'v' + state.packageAudit.markVersion : ''}</span></div>
+        <pre class="yaml-pre">${state.yamlRawText || 'loading...'}</pre>
+        <div class="detail-row"><span class="k">image</span><span class="v">${state.yaml.image}（底图文件名）</span></div>
+        <div class="detail-row"><span class="k">resolution</span><span class="v">${state.yaml.resolution} m/px（每像素 3cm）</span></div>
+        <div class="detail-row"><span class="k">origin [x₀,y₀,θ]</span><span class="v">[${state.yaml.originX.toFixed(3)}, ${state.yaml.originY.toFixed(3)}, ${state.yaml.originTheta}]</span></div>
+        <div class="detail-row"><span class="k">origin 对应像素</span><span class="v">底图左下角 (u=0, v=${state.height})</span></div>
+        <div class="detail-row"><span class="k">实测物理范围</span><span class="v">${physW} m × ${physH} m</span></div>
+      </div>
+
+      <div class="info-block">
+        <div class="info-block-title"><span>2. 实包内空间点位（点击可居中聚焦）</span><span>${state.realSpots.length} 处</span></div>
+        ${spotsHtml || '<div style="font-size:11px;color:#64748B;">未检出空间点位</div>'}
+      </div>
+
+      <div class="info-block">
+        <div class="info-block-title"><span>3. pbstream 点云对比与文件核验</span></div>
+        <div class="detail-row"><span class="k">216.pbstream</span><span class="v">${state.packageAudit.pbPoints.toLocaleString()} 点 · ${state.packageAudit.pbNodes.toLocaleString()} 帧（去 IMU）</span></div>
+        <div class="detail-row"><span class="k">与 map.png 对齐</span><span class="v">${state.packageAudit.pbNearWallPct}% 命中墙体 ±1px（不含 keepout 封岛）</span></div>
+        <div class="detail-row"><span class="k">nav_area / path_info</span><span class="v">${navStr} / ${pathStr}（均为空）</span></div>
+        <div class="detail-row"><span class="k">实时机器人/告警</span><span class="v">无（静态实包不含车辆）</span></div>
+      </div>
+    `;
+
+    body.querySelectorAll('.spot-item').forEach(el => {
+      el.onclick = () => {
+        const sid = el.getAttribute('data-spot-id');
+        const target = state.realSpots.find(s => s.id === sid);
+        if (!target) return;
+        state.selectedSpotId = sid;
+        renderPackageInfoCard();
+        focusWorldPoint(target.xw, target.yw);
+      };
+    });
+  }
+
+  function syncViewHud() {
+    const pct = Math.round(state.view.scale * 100);
+    const altM = (30 / Math.max(0.2, state.view.scale)).toFixed(1);
+    const ang = Math.round(state.view.angleDeg);
+    const tilt = Math.round(state.view.tiltDeg);
+
+    document.getElementById('zoom-pct').textContent = `${pct}%`;
+    document.getElementById('sl-scale').value = Math.max(25, Math.min(250, pct));
+    document.getElementById('angle-val').textContent = `${ang}°`;
+    document.getElementById('sl-angle').value = ang;
+    document.getElementById('tilt-val').textContent = `${tilt}°`;
+    document.getElementById('sl-tilt').value = tilt;
+
+    document.getElementById('hud-angle').textContent = `${ang}°`;
+    document.getElementById('hud-tilt').textContent = `${tilt}°`;
+    document.getElementById('hud-alt').textContent = `${altM}m`;
+    document.getElementById('compass-needle').setAttribute('transform', `rotate(${ang} 22 22)`);
+
+    document.getElementById('btn-tilt-2d').classList.toggle('active', tilt === 0);
+    document.getElementById('btn-tilt-3d').classList.toggle('active', tilt > 0);
+  }
+
+  function fitHallView() {
+    const cw = canvas.clientWidth;
+    const ch = canvas.clientHeight;
+    const cardOpen = document.getElementById('detail-card').classList.contains('open');
+    const leftMargin = cardOpen ? 344 : 28;
+    const rightMargin = 40;
+    const topMargin = 80;
+    const bottomMargin = 160;
+    const availW = Math.max(320, cw - leftMargin - rightMargin);
+    const availH = Math.max(300, ch - topMargin - bottomMargin);
+
+    const { cosA, sinA, cosT } = getViewTrig();
+    const hallW = 1220;
+    const hallH = 1260;
+    const rotW = Math.abs(hallW * cosA) + Math.abs(hallH * sinA);
+    const rotH = (Math.abs(hallW * sinA) + Math.abs(hallH * cosA)) * cosT;
+    const s = Math.min(availW / rotW, availH / rotH);
+    state.view.scale = Math.max(0.25, Math.min(2.5, s));
+
+    const centerU = 840;
+    const centerV = 1240;
+    const targetScreenX = leftMargin + availW / 2;
+    const targetScreenY = topMargin + availH / 2;
+    state.view.panX = 0;
+    state.view.panY = 0;
+    const p = pxToScreen(centerU, centerV);
+    state.view.panX = targetScreenX - p.sx;
+    state.view.panY = targetScreenY - p.sy;
+    syncViewHud();
+    requestRender();
+  }
+
+  function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = stageWrap.clientWidth;
+    const h = stageWrap.clientHeight;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    requestRender();
+  }
+
+  // 主绘制函数（支持融合美化 / 原始 PNG / 216.pbstream 点云重建 三版本实时对比）
+  function renderFrame() {
+    const cw = canvas.clientWidth;
+    const ch = canvas.clientHeight;
+    const isDarkPc = state.mode === 'pointcloud';
+    ctx.fillStyle = isDarkPc ? '#0B1220' : (state.mode === 'themed' ? '#DCE1E8' : '#CDCDCD');
+    ctx.fillRect(0, 0, cw, ch);
+
+    const baseCanvas = state.mode === 'pointcloud'
+      ? state.pointCloudBaseCanvas
+      : (state.mode === 'themed' ? state.themedCanvas : state.rawCanvas);
+    if (!baseCanvas) return;
+
+    const { ax, ay, angleRad, cosT } = getViewTrig();
+
+    if (state.view.tiltDeg > 0) {
+      const depth = (state.view.tiltDeg / 55) * 18 + 6;
+      const c0 = pxToScreen(0, 0);
+      const c1 = pxToScreen(state.width, 0);
+      const c2 = pxToScreen(state.width, state.height);
+      const c3 = pxToScreen(0, state.height);
+      ctx.save();
+      ctx.fillStyle = isDarkPc ? 'rgba(56, 189, 248, 0.14)' : 'rgba(15, 23, 42, 0.14)';
+      ctx.beginPath();
+      ctx.moveTo(c0.sx, c0.sy + depth);
+      ctx.lineTo(c1.sx, c1.sy + depth);
+      ctx.lineTo(c2.sx, c2.sy + depth);
+      ctx.lineTo(c3.sx, c3.sy + depth);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // === Pass 1: 地图平面仿射变换层 ===
+    ctx.save();
+    ctx.translate(state.view.panX, state.view.panY);
+    ctx.scale(state.view.scale, state.view.scale * cosT);
+    ctx.rotate(angleRad);
+    ctx.translate(-ax, -ay);
+
+    ctx.imageSmoothingEnabled = state.view.scale < 1.2 && !isDarkPc;
+    ctx.drawImage(baseCanvas, 0, 0);
+
+    if (state.view.tiltDeg > 0) {
+      ctx.strokeStyle = isDarkPc ? 'rgba(56, 189, 248, 0.45)' : 'rgba(100, 116, 139, 0.45)';
+      ctx.lineWidth = 2 / state.view.scale;
+      ctx.strokeRect(0, 0, state.width, state.height);
+    }
+
+    if (state.layers.pcOverlay && !isDarkPc && state.pointCloudOverlayCanvas) {
+      ctx.drawImage(state.pointCloudOverlayCanvas, 0, 0);
+    }
+    if (state.layers.keepout && state.keepoutCanvas) {
+      ctx.drawImage(state.keepoutCanvas, 0, 0);
+    }
+    if (state.layers.traffic && state.trafficCanvas) {
+      ctx.drawImage(state.trafficCanvas, 0, 0);
+    }
+    if (state.layers.grid) {
+      drawWorldGridLines(isDarkPc);
+    }
+    if (state.layers.pcTraj && state.pbstreamTraj) {
+      drawPbstreamTrajectory();
+    }
+    drawRealSpotFloorRings();
+
+    ctx.restore();
+
+    // === Pass 2: 屏幕空间正立标注层 ===
+    if (state.layers.grid) {
+      drawWorldGridOriginLabels(isDarkPc);
+    }
+    drawRealSpotsScreen();
+  }
+
+  function drawPbstreamTrajectory() {
+    const traj = state.pbstreamTraj;
+    if (!traj || traj.length < 6) return;
+    const inv = 1 / state.view.scale;
+    const count = traj.length / 3;
+    ctx.save();
+    ctx.beginPath();
+    for (let i = 0; i < count; i++) {
+      const p = worldToPx(traj[i * 3], traj[i * 3 + 1]);
+      if (i === 0) ctx.moveTo(p.u, p.v);
+      else ctx.lineTo(p.u, p.v);
+    }
+    ctx.strokeStyle = 'rgba(16, 185, 129, 0.85)';
+    ctx.lineWidth = 2.2 * inv;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    // Start node (#0) dot
+    const pStart = worldToPx(traj[0], traj[1]);
+    ctx.beginPath();
+    ctx.arc(pStart.u, pStart.v, 6 * inv, 0, Math.PI * 2);
+    ctx.fillStyle = '#10B981';
+    ctx.fill();
+    ctx.lineWidth = 1.6 * inv;
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawWorldGridLines(isDark) {
+    const stepM = 5;
+    const topLeftW = pxToWorld(0, 0);
+    const botRightW = pxToWorld(state.width, state.height);
+    const minX = Math.floor(topLeftW.xw / stepM) * stepM;
+    const maxX = Math.ceil(botRightW.xw / stepM) * stepM;
+    const minY = Math.floor(botRightW.yw / stepM) * stepM;
+    const maxY = Math.ceil(topLeftW.yw / stepM) * stepM;
+
+    ctx.save();
+    ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.18)' : 'rgba(100, 116, 139, 0.22)';
+    ctx.lineWidth = 1 / state.view.scale;
+    ctx.setLineDash([4 / state.view.scale, 4 / state.view.scale]);
+
+    for (let x = minX; x <= maxX; x += stepM) {
+      const p1 = worldToPx(x, minY);
+      const p2 = worldToPx(x, maxY);
+      ctx.beginPath(); ctx.moveTo(p1.u, p1.v); ctx.lineTo(p2.u, p2.v); ctx.stroke();
+    }
+    for (let y = minY; y <= maxY; y += stepM) {
+      const p1 = worldToPx(minX, y);
+      const p2 = worldToPx(maxX, y);
+      ctx.beginPath(); ctx.moveTo(p1.u, p1.v); ctx.lineTo(p2.u, p2.v); ctx.stroke();
+    }
+    const orig = worldToPx(0, 0);
+    ctx.setLineDash([]);
+    ctx.strokeStyle = isDark ? 'rgba(56, 189, 248, 0.75)' : 'rgba(37, 99, 235, 0.55)';
+    ctx.lineWidth = 1.6 / state.view.scale;
+    ctx.beginPath();
+    ctx.moveTo(orig.u - 16 / state.view.scale, orig.v);
+    ctx.lineTo(orig.u + 16 / state.view.scale, orig.v);
+    ctx.moveTo(orig.u, orig.v - 16 / state.view.scale);
+    ctx.lineTo(orig.u, orig.v + 16 / state.view.scale);
+    ctx.stroke();
+
+    // Also mark map.yaml origin bottom-left corner (u=0, v=height)
+    ctx.strokeStyle = isDark ? 'rgba(196, 181, 253, 0.75)' : 'rgba(124, 58, 237, 0.7)';
+    ctx.beginPath();
+    ctx.arc(0, state.height, 10 / state.view.scale, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawWorldGridOriginLabels(isDark) {
+    const orig = worldToPx(0, 0);
+    const s = pxToScreen(orig.u, orig.v);
+    const corner = pxToScreen(0, state.height);
+    ctx.save();
+    ctx.font = '600 11px monospace';
+    ctx.fillStyle = isDark ? '#93C5FD' : '#1D4ED8';
+    ctx.fillText('ROS 原点 (0m, 0m)', s.sx + 10, s.sy - 8);
+
+    ctx.fillStyle = isDark ? '#C4B5FD' : '#6D28D9';
+    ctx.fillText(`map.yaml origin [${state.yaml.originX.toFixed(2)}, ${state.yaml.originY.toFixed(2)}]`, corner.sx + 8, corner.sy - 8);
+    ctx.restore();
+  }
+
+  function isSpotVisible(sp) {
+    if (sp.kind === 'mark') return state.layers.spots;
+    if (sp.kind === 'end_pose') return state.layers.endPose;
+    return false;
+  }
+
+  function drawRealSpotFloorRings() {
+    const inv = 1 / state.view.scale;
+    for (const sp of state.realSpots) {
+      if (!isSpotVisible(sp)) continue;
+      const { u, v } = worldToPx(sp.xw, sp.yw);
+      sp._lastU = u;
+      sp._lastV = v;
+      if (state.selectedSpotId === sp.id) {
+        ctx.save();
+        ctx.translate(u, v);
+        ctx.beginPath();
+        ctx.arc(0, 0, 24 * inv, 0, Math.PI * 2);
+        ctx.fillStyle = sp.kind === 'mark' ? 'rgba(5, 150, 105, 0.16)' : 'rgba(2, 132, 199, 0.16)';
+        ctx.fill();
+        ctx.lineWidth = 2 * inv;
+        ctx.strokeStyle = sp.kind === 'mark' ? 'rgba(5, 150, 105, 0.75)' : 'rgba(2, 132, 199, 0.75)';
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
+  function drawRealSpotsScreen() {
+    for (const sp of state.realSpots) {
+      if (!isSpotVisible(sp)) continue;
+      const px = worldToPx(sp.xw, sp.yw);
+      const p0 = pxToScreen(px.u, px.v);
+      const p1 = pxToScreen(px.u + Math.cos(sp.theta), px.v - Math.sin(sp.theta));
+      const screenHeading = Math.atan2(p1.sy - p0.sy, p1.sx - p0.sx);
+      sp._lastSx = p0.sx;
+      sp._lastSy = p0.sy;
+      sp._labelRect = null;
+
+      const isMark = sp.kind === 'mark';
+      const fill = isMark ? '#059669' : '#0284C7';
+      const isSelected = state.selectedSpotId === sp.id;
+
+      ctx.save();
+      ctx.translate(p0.sx, p0.sy);
+
+      // Directional pose arrow representing real yaw (theta)
+      ctx.save();
+      ctx.rotate(screenHeading);
+      ctx.beginPath();
+      ctx.moveTo(22, 0);
+      ctx.lineTo(11, -5);
+      ctx.lineTo(11, 5);
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(13, 0);
+      ctx.strokeStyle = fill;
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+      ctx.restore();
+
+      // Core point circle
+      ctx.beginPath();
+      ctx.arc(0, 0, isMark ? 9 : 8, 0, Math.PI * 2);
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.lineWidth = isSelected ? 2.6 : 2;
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.stroke();
+
+      // Label tag
+      ctx.font = '600 11px PingFang SC, sans-serif';
+      const txt = isMark
+        ? `⚡ ${sp.name} (${sp.source} · θ=${sp.theta.toFixed(2)}rad)`
+        : `📍 ${sp.name} (${sp.source})`;
+      const tw = ctx.measureText(txt).width + 14;
+      const lx = -tw / 2;
+      const ly = 14;
+      sp._labelRect = { x: p0.sx + lx, y: p0.sy + ly, w: tw, h: 21 };
+
+      ctx.fillStyle = isSelected ? '#ECFDF5' : 'rgba(255,255,255,0.95)';
+      ctx.strokeStyle = fill;
+      ctx.lineWidth = isSelected ? 1.8 : 1.2;
+      ctx.beginPath();
+      ctx.roundRect(lx, ly, tw, 21, 5);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#0F172A';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(txt, 0, ly + 10.5);
+      ctx.restore();
+    }
+  }
+
+  // Interactive Pan / Rotate / Tilt / Altitude Zoom / Click handlers
+  let dragStart = null;
+  let moved = false;
+
+  function normalizeAngle(deg) {
+    let a = ((deg + 180) % 360 + 360) % 360 - 180;
+    if (a === -180 && deg > 0) a = 180;
+    return a;
+  }
+
+  function setAngleAndTilt(nextAngle, nextTilt, pivotX, pivotY) {
+    const target = pivotX != null ? { cx: pivotX, cy: pivotY } : getOpenViewportCenter();
+    preserveScreenPoint(target.cx, target.cy, () => {
+      state.view.angleDeg = normalizeAngle(nextAngle);
+      state.view.tiltDeg = Math.max(0, Math.min(55, nextTilt));
+    });
+    syncViewHud();
+    requestRender();
+  }
+
+  function setScalePct(pct, pivotX, pivotY) {
+    const target = pivotX != null ? { cx: pivotX, cy: pivotY } : getOpenViewportCenter();
+    preserveScreenPoint(target.cx, target.cy, () => {
+      state.view.scale = Math.max(0.25, Math.min(3.0, pct / 100));
+    });
+    syncViewHud();
+    requestRender();
+  }
+
+  function panBy(dx, dy) {
+    state.view.panX += dx;
+    state.view.panY += dy;
+    requestRender();
+  }
+
+  stageWrap.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  stageWrap.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const isRotateMode = (e.button === 2) || e.shiftKey || e.altKey;
+    const center = getOpenViewportCenter();
+    dragStart = {
+      mode: isRotateMode ? 'rotate' : 'pan',
+      btn: e.button,
+      x: e.clientX,
+      y: e.clientY,
+      sx: e.clientX - rect.left,
+      sy: e.clientY - rect.top,
+      ox: state.view.panX,
+      oy: state.view.panY,
+      startAngle: state.view.angleDeg,
+      startTilt: state.view.tiltDeg,
+      pivotX: center.cx,
+      pivotY: center.cy,
+    };
+    moved = false;
+    stageWrap.classList.add('dragging');
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const px = screenToPx(sx, sy);
+    state.hoverPx = px;
+    if (px.u >= 0 && px.u <= state.width && px.v >= 0 && px.v <= state.height) {
+      const wPos = pxToWorld(px.u, px.v);
+      document.getElementById('hud-cursor').innerHTML =
+        `<span class="yaml-accent">u=${px.u.toFixed(0)}, v=${px.v.toFixed(0)}</span> ↔ <span class="yaml-accent">x=${wPos.xw.toFixed(2)}m, y=${wPos.yw.toFixed(2)}m</span>`;
+    }
+    if (!dragStart) return;
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+    if (Math.hypot(dx, dy) > 3) moved = true;
+    if (dragStart.mode === 'pan') {
+      state.view.panX = dragStart.ox + dx;
+      state.view.panY = dragStart.oy + dy;
+      requestRender();
+    } else {
+      const nextAngle = dragStart.startAngle + dx * 0.35;
+      const nextTilt = dragStart.startTilt - dy * 0.25;
+      setAngleAndTilt(nextAngle, nextTilt, dragStart.pivotX, dragStart.pivotY);
+    }
+  });
+
+  window.addEventListener('mouseup', (e) => {
+    if (dragStart && !moved && dragStart.btn === 0 && dragStart.mode === 'pan') {
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      let hit = null;
+      for (const sp of state.realSpots) {
+        if (!isSpotVisible(sp)) continue;
+        const nearPin = sp._lastSx != null && Math.hypot(sx - sp._lastSx, sy - sp._lastSy) <= 22;
+        const rc = sp._labelRect;
+        const inLabel = rc && sx >= rc.x && sx <= rc.x + rc.w && sy >= rc.y && sy <= rc.y + rc.h;
+        if (nearPin || inLabel) {
+          hit = sp; break;
+        }
+      }
+      if (hit) {
+        state.selectedSpotId = hit.id;
+        renderPackageInfoCard();
+        requestRender();
+      }
+    }
+    dragStart = null;
+    stageWrap.classList.remove('dragging');
+  });
+
+  stageWrap.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const factor = e.deltaY < 0 ? 1.12 : 0.89;
+    zoomAt(e.clientX - rect.left, e.clientY - rect.top, factor);
+  }, { passive: false });
+
+  function zoomAt(cx, cy, factor) {
+    preserveScreenPoint(cx, cy, () => {
+      state.view.scale = Math.max(0.25, Math.min(3.0, state.view.scale * factor));
+    });
+    syncViewHud();
+    requestRender();
+  }
+
+  // Pan directional buttons
+  document.getElementById('btn-pan-up').onclick = () => panBy(0, 72);
+  document.getElementById('btn-pan-down').onclick = () => panBy(0, -72);
+  document.getElementById('btn-pan-left').onclick = () => panBy(72, 0);
+  document.getElementById('btn-pan-right').onclick = () => panBy(-72, 0);
+
+  // Altitude / Scale buttons & slider
+  document.getElementById('btn-zoom-in').onclick = () => {
+    const c = getOpenViewportCenter();
+    zoomAt(c.cx, c.cy, 1.2);
+  };
+  document.getElementById('btn-zoom-out').onclick = () => {
+    const c = getOpenViewportCenter();
+    zoomAt(c.cx, c.cy, 0.82);
+  };
+  document.getElementById('sl-scale').oninput = (e) => setScalePct(Number(e.target.value));
+
+  // Planar rotation buttons & slider
+  document.getElementById('btn-rot-ccw').onclick = () => setAngleAndTilt(state.view.angleDeg - 90, state.view.tiltDeg);
+  document.getElementById('btn-rot-cw').onclick = () => setAngleAndTilt(state.view.angleDeg + 90, state.view.tiltDeg);
+  document.getElementById('btn-rot-zero').onclick = () => setAngleAndTilt(0, state.view.tiltDeg);
+  document.getElementById('btn-rot-figma').onclick = () => {
+    state.view.angleDeg = -90;
+    fitHallView();
+  };
+  document.getElementById('sl-angle').oninput = (e) => setAngleAndTilt(Number(e.target.value), state.view.tiltDeg);
+
+  // Elevation tilt buttons & slider
+  document.getElementById('btn-tilt-2d').onclick = () => setAngleAndTilt(state.view.angleDeg, 0);
+  document.getElementById('btn-tilt-3d').onclick = () => setAngleAndTilt(state.view.angleDeg, 35);
+  document.getElementById('sl-tilt').oninput = (e) => setAngleAndTilt(state.view.angleDeg, Number(e.target.value));
+
+  // Fit & Full Reset
+  function resetAllView() {
+    state.view.angleDeg = 0;
+    state.view.tiltDeg = 0;
+    fitHallView();
+  }
+  document.getElementById('btn-fit').onclick = fitHallView;
+  document.getElementById('btn-reset-all').onclick = resetAllView;
+  document.getElementById('compass-reset').onclick = resetAllView;
+
+  // Keyboard shortcuts for quick panning / rotation / altitude
+  window.addEventListener('keydown', (e) => {
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+    if (e.key === 'ArrowUp') { e.preventDefault(); panBy(0, 64); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); panBy(0, -64); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); panBy(64, 0); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); panBy(-64, 0); }
+    else if (e.key === '[') setAngleAndTilt(state.view.angleDeg - 15, state.view.tiltDeg);
+    else if (e.key === ']') setAngleAndTilt(state.view.angleDeg + 15, state.view.tiltDeg);
+  });
+
+  document.getElementById('d-close').onclick = () => {
+    document.getElementById('detail-card').classList.remove('open');
+    document.getElementById('btn-reopen-info').classList.add('visible');
+  };
+  document.getElementById('btn-reopen-info').onclick = () => {
+    document.getElementById('detail-card').classList.add('open');
+    document.getElementById('btn-reopen-info').classList.remove('visible');
+  };
+
+  function setBaseMode(nextMode) {
+    state.mode = nextMode;
+    document.getElementById('btn-themed').classList.toggle('active', nextMode === 'themed');
+    document.getElementById('btn-raw').classList.toggle('active', nextMode === 'raw');
+    document.getElementById('btn-pointcloud').classList.toggle('active', nextMode === 'pointcloud');
+    requestRender();
+  }
+  document.getElementById('btn-themed').onclick = () => setBaseMode('themed');
+  document.getElementById('btn-raw').onclick = () => setBaseMode('raw');
+  document.getElementById('btn-pointcloud').onclick = () => {
+    if (!state.layers.pcTraj && !state._userToggledTraj) {
+      state.layers.pcTraj = true;
+      document.getElementById('chk-traj').checked = true;
+    }
+    setBaseMode('pointcloud');
+  };
+
+  const layerMap = {
+    'chk-keepout': 'keepout',
+    'chk-traffic': 'traffic',
+    'chk-spots': 'spots',
+    'chk-endpose': 'endPose',
+    'chk-pc-overlay': 'pcOverlay',
+    'chk-traj': 'pcTraj',
+    'chk-grid': 'grid',
+  };
+  Object.entries(layerMap).forEach(([elId, key]) => {
+    document.getElementById(elId).onchange = (e) => {
+      if (key === 'pcTraj') state._userToggledTraj = true;
+      state.layers[key] = e.target.checked;
+      requestRender();
+    };
+  });
+
+  window.addEventListener('resize', resizeCanvas);
+
+  // Boot: fetch real YAML + mark_info.data + scene.json + pbstream_cloud.bin + PNGs
+  async function boot() {
+    try {
+      const [yamlResp, markResp, sceneResp, navResp, pathResp, pcResp, mapImg, keepImg, trafImg] = await Promise.all([
+        fetch('./216/map.yaml'),
+        fetch('./216/mark_info.data'),
+        fetch('./scene.json'),
+        fetch('./216/nav_area.data'),
+        fetch('./216/path_info.data'),
+        fetch('./216/pbstream_cloud.bin'),
+        loadImage('./216/map.png'),
+        loadImage('./216/keepout.png'),
+        loadImage('./216/traffic_keepout.png'),
+      ]);
+
+      if (yamlResp.ok) parseYaml(await yamlResp.text());
+      buildLayers(mapImg, keepImg, trafImg);
+      if (pcResp.ok) buildPointCloudLayers(await pcResp.arrayBuffer());
+
+      const realSpots = [];
+      let markCount = 0;
+      if (markResp.ok) {
+        const parsed = parseMarkInfoProtobuf(await markResp.arrayBuffer());
+        state.packageAudit.markVersion = parsed.version;
+        markCount = parsed.marks.length;
+        parsed.marks.forEach(m => realSpots.push(m));
+      }
+      if (sceneResp.ok) {
+        const sceneJson = await sceneResp.json();
+        const m0 = sceneJson.maps && sceneJson.maps[0];
+        if (m0 && m0.end_pose) {
+          realSpots.push({
+            id: 'end_pose',
+            name: 'end_pose (建图终点)',
+            source: 'scene.json',
+            kind: 'end_pose',
+            xw: m0.end_pose.x,
+            yw: m0.end_pose.y,
+            theta: m0.end_pose.theta,
+          });
+        }
+      }
+      if (navResp.ok) state.packageAudit.navAreaBytes = (await navResp.arrayBuffer()).byteLength;
+      if (pathResp.ok) state.packageAudit.pathInfoBytes = (await pathResp.arrayBuffer()).byteLength;
+
+      state.realSpots = realSpots;
+      const chargeMark = realSpots.find(s => s.kind === 'mark');
+      if (chargeMark) {
+        const px = worldToPx(chargeMark.xw, chargeMark.yw);
+        document.getElementById('hud-mark').textContent =
+          `${chargeMark.name} (${chargeMark.xw.toFixed(3)}, ${chargeMark.yw.toFixed(3)}, θ=${chargeMark.theta.toFixed(2)}rad) → px(${Math.round(px.u)}, ${Math.round(px.v)})`;
+      } else {
+        document.getElementById('hud-mark').textContent = '0 个标注点';
+      }
+
+      const physW = (state.width * state.yaml.resolution).toFixed(2);
+      const physH = (state.height * state.yaml.resolution).toFixed(2);
+      document.getElementById('k-size').textContent = `${state.width}×${state.height}`;
+      document.getElementById('k-meters').textContent = `${physW}×${physH}m`;
+      document.getElementById('k-res').textContent = `${state.yaml.resolution} m/px`;
+      document.getElementById('k-pts').textContent = `${state.packageAudit.pbPoints.toLocaleString()}`;
+      document.getElementById('k-marks').textContent = `${markCount} (${chargeMark ? chargeMark.name : '无'})`;
+
+      document.getElementById('yaml-summary').textContent =
+        `haikou_T1/216 · res=${state.yaml.resolution}m/px · ${physW}×${physH}m`;
+      document.getElementById('hud-yaml').textContent =
+        `res=${state.yaml.resolution}m/px, origin=[${state.yaml.originX.toFixed(2)}, ${state.yaml.originY.toFixed(2)}, ${state.yaml.originTheta}], ${state.width}×${state.height}`;
+
+      renderPackageInfoCard();
+      document.getElementById('loading-badge').style.display = 'none';
+
+      resizeCanvas();
+      fitHallView();
+    } catch (err) {
+      document.getElementById('loading-badge').textContent = '加载地图包失败：' + err.message;
+      console.error(err);
+    }
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
