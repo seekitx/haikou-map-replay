@@ -80,16 +80,32 @@ function updatePathSplit(a,b,f){
   done.needsUpdate=true;remaining.needsUpdate=true;previousSplit=a;
 }
 // Photo-referenced Blender model. Motion is a visualization of recorded positions.
-const robot = new THREE.Group();robot.name='alphabot2-replay';scene.add(robot);
-let robotReady=false, followRobot=false, followMode=null, wheelAngle=0, wheelPivots=[];
+const robot = new THREE.Group();robot.name='ai2-service-robot';scene.add(robot);
+let robotReady=false, followRobot=false, followMode=null, driveWheels=[], casters=[];
 $('follow').disabled=true;$('eagle').disabled=true;
-const wheelRadius=.105, cumulativeDistance=new Float64Array(data.trajectory.length);
+const cumulativeDistance=new Float64Array(data.trajectory.length);
 for(let i=1;i<data.trajectory.length;i++){const a=data.trajectory[i-1],b=data.trajectory[i];cumulativeDistance[i]=cumulativeDistance[i-1]+Math.hypot(b[0]-a[0],b[1]-a[1])*resolution;}
-new GLTFLoader().load('assets/alphabot2-reference-v7.glb?v=7',gltf=>{
-  robot.add(gltf.scene);gltf.scene.traverse(object=>object.layers.enable(1));wheelPivots=['AB7_Wheel_L','AB7_Wheel_R'].map(name=>gltf.scene.getObjectByName(name)).filter(Boolean);
-  $('canvas').dataset.wheelCount=String(wheelPivots.length);
-  if(wheelPivots.length!==2){$('error').hidden=false;$('error').textContent='机器人模型已加载，但轮子未能正常加载。';}
-  wheelPivots.forEach(wheel=>wheel.rotation.x=wheelAngle);robotReady=true;$('follow').disabled=false;$('eagle').disabled=false;
+// The exported model faces +Z. Its wheel shafts are parallel to the local X axis.
+function rollWheels(distance) {
+  for (const wheel of driveWheels) wheel.rotation.x = distance / .101;
+  for (const wheel of casters) wheel.rotation.x = distance / .039;
+  $('canvas').dataset.wheelAngle = (distance / .101).toFixed(5);
+}
+new GLTFLoader().load('assets/ai2-service-robot.glb', gltf => {
+  robot.add(gltf.scene);
+  gltf.scene.traverse(object => object.layers.enable(1));
+  const findWheels = names => names.map(name => gltf.scene.getObjectByName(name)).filter(Boolean);
+  driveWheels = findWheels(['DriveWheelLeft', 'DriveWheelRight']);
+  casters = findWheels(['CasterLeft', 'CasterRight']);
+  $('canvas').dataset.wheelCount = String(driveWheels.length);
+  if (driveWheels.length !== 2 || casters.length !== 2) {
+    $('error').hidden = false;
+    $('error').textContent = '机器人模型已加载，但轮子未能正常加载。';
+  }
+  rollWheels(progress * totalDistance);
+  robotReady = true;
+  $('follow').disabled = false;
+  $('eagle').disabled = false;
 },undefined,()=>{$('error').hidden=false;$('error').textContent='机器人模型加载失败，请刷新页面。';});
 const eagleRing=new THREE.Mesh(new THREE.RingGeometry(.72,.86,48),new THREE.MeshBasicMaterial({color:0x2575e8,transparent:true,opacity:.9,side:THREE.DoubleSide}));eagleRing.rotation.x=-Math.PI/2;eagleRing.position.y=.08;eagleRing.visible=false;eagleRing.layers.enable(1);robot.add(eagleRing);
 function setFollow(on,mode='close'){
@@ -177,7 +193,7 @@ function locateDistance(distance){
   const a=lo,b=Math.min(a+1,cumulativeDistance.length-1),span=cumulativeDistance[b]-cumulativeDistance[a];
   return {a,b,f:span>0?(distance-cumulativeDistance[a])/span:0};
 }
-function drawProgress(){const count=data.trajectory.length;const distance=progress*totalDistance;const {a,b,f}=locateDistance(distance);updatePathSplit(a,b,f);$('canvas').dataset.distanceMeters=distance.toFixed(4);$('canvas').dataset.speedMps=String(speed);wheelAngle=distance/wheelRadius;wheelPivots.forEach(wheel=>wheel.rotation.x=wheelAngle);$('canvas').dataset.wheelAngle=wheelAngle.toFixed(5);const old=robot.position.clone();robot.position.copy(toWorld(data.trajectory[a],0)).lerp(toWorld(data.trajectory[b],0),f);const ahead=toWorld(data.trajectory[Math.min(count-1,b+5)],0),behind=toWorld(data.trajectory[Math.max(0,a-3)],0),direction=ahead.sub(behind);if(direction.lengthSq()>.0001){targetYaw=Math.atan2(direction.x,direction.z);if(!yawInitialized){robot.rotation.y=targetYaw;yawInitialized=true;}}if(followRobot&&!playing){const delta=robot.position.clone().sub(old);camera.position.add(delta);controls.target.add(delta)}$('canvas').dataset.robotXZ=robot.position.x.toFixed(3)+','+robot.position.z.toFixed(3);$('canvas').dataset.cameraXZ=camera.position.x.toFixed(3)+','+camera.position.z.toFixed(3);$('canvas').dataset.targetXZ=controls.target.x.toFixed(3)+','+controls.target.z.toFixed(3);window.dispatchEvent(new CustomEvent('map-replay-progress',{detail:{a,b,f}}));const pct=Math.round(progress*100);$('seek').value=Math.round(progress*1000);$('percent').textContent=pct+'%';$('progress-label').textContent='回放进度 '+pct+'%';}
+function drawProgress(){const count=data.trajectory.length;const distance=progress*totalDistance;const {a,b,f}=locateDistance(distance);updatePathSplit(a,b,f);$('canvas').dataset.distanceMeters=distance.toFixed(4);$('canvas').dataset.speedMps=String(speed);rollWheels(distance);const old=robot.position.clone();robot.position.copy(toWorld(data.trajectory[a],0)).lerp(toWorld(data.trajectory[b],0),f);const ahead=toWorld(data.trajectory[Math.min(count-1,b+5)],0),behind=toWorld(data.trajectory[Math.max(0,a-3)],0),direction=ahead.sub(behind);if(direction.lengthSq()>.0001){targetYaw=Math.atan2(direction.x,direction.z);if(!yawInitialized){robot.rotation.y=targetYaw;yawInitialized=true;}}if(followRobot&&!playing){const delta=robot.position.clone().sub(old);camera.position.add(delta);controls.target.add(delta)}$('canvas').dataset.robotXZ=robot.position.x.toFixed(3)+','+robot.position.z.toFixed(3);$('canvas').dataset.cameraXZ=camera.position.x.toFixed(3)+','+camera.position.z.toFixed(3);$('canvas').dataset.targetXZ=controls.target.x.toFixed(3)+','+controls.target.z.toFixed(3);window.dispatchEvent(new CustomEvent('map-replay-progress',{detail:{a,b,f}}));const pct=Math.round(progress*100);$('seek').value=Math.round(progress*1000);$('percent').textContent=pct+'%';$('progress-label').textContent='回放进度 '+pct+'%';}
 function setPlaying(on){playing=on;last=0;$('play').textContent=on?'❚❚':'▶';$('play').setAttribute('aria-label',on?'暂停轨迹':'播放轨迹');$('play-status').textContent=on?'· 正在回放':'· 已暂停'}
 $('play').onclick=()=>{if(progress>=1)progress=0;setPlaying(!playing);drawProgress()};$('seek').oninput=e=>{progress=Number(e.target.value)/1000;drawProgress()};document.querySelectorAll('.speed').forEach(b=>b.onclick=()=>{speed=Number(b.dataset.speed);$('canvas').dataset.speedMps=String(speed);document.querySelectorAll('.speed').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',String(x===b))})});
 function updateCameraLabels(){const radius=camera.position.distanceTo(controls.target);let tilt=Math.round(controls.getPolarAngle()*180/Math.PI), angle=Math.round(controls.getAzimuthalAngle()*180/Math.PI), distance=Math.round(radius/defaultDistance*100);$('tilt').value=tilt;$('rotation').value=angle;$('distance').value=distance;$('tilt-value').textContent=tilt+'°';$('rotation-value').textContent=angle+'°';$('distance-value').textContent=distance+'%'}

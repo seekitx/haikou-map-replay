@@ -36,7 +36,7 @@
       marker.dataset.robotId = robot.id; marker.dataset.selected = String(robot.id === selectedRobot);
       marker.dataset.warning = String(!!robot.warning);
       marker.setAttribute('aria-label', `${robot.name}，${taskNames[robot.task]}${robot.warning ? '，演示暂停' : ''}`);
-      marker.innerHTML = `<span class="direction" aria-hidden="true"></span><span class="robot-pin" aria-hidden="true">🤖</span><span class="robot-card"><span class="robot-card-row"><span>${robot.role ? robot.role + ' · ' : ''}${robot.name}</span><span class="battery">▣ ${robot.battery}</span></span><span class="robot-card-row"><span>${taskNames[robot.task]}</span><span class="robot-badge ${robot.warning ? 'warning' : ''}">${robot.id === 'history' ? '回放' : robot.warning ? '暂停中' : '演示中'}</span></span>${robot.warning ? '<span class="robot-card-row robot-alert">故障提示 · 演示</span>' : ''}</span>`;
+      marker.innerHTML = `<span class="direction" aria-hidden="true"></span><span class="robot-pin" aria-hidden="true"><img src="assets/ai2-robot-marker.png" alt="" width="31" height="31"></span><span class="robot-card"><span class="robot-card-row"><span>${robot.role ? robot.role + ' · ' : ''}${robot.name}</span><span class="battery">▣ ${robot.battery}</span></span><span class="robot-card-row"><span>${taskNames[robot.task]}</span><span class="robot-badge ${robot.warning ? 'warning' : ''}">${robot.id === 'history' ? '回放' : robot.warning ? '暂停中' : '演示中'}</span></span>${robot.warning ? '<span class="robot-card-row robot-alert">故障提示 · 演示</span>' : ''}</span>`;
       marker.onclick = () => { selectedRobot = robot.id; for (const item of robotLayer.children) item.dataset.selected = String(item.dataset.robotId === selectedRobot); };
       robotLayer.appendChild(marker);
     }
