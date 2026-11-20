@@ -91,33 +91,8 @@ function rollWheels(distance) {
   for (const wheel of casters) wheel.rotation.x = distance / .039;
   $('canvas').dataset.wheelAngle = (distance / .101).toFixed(5);
 }
-function addScreenSmile(model) {
-  // Paint on the visor in model coordinates so the expression follows its curvature.
-  model.traverse(({ material }) => {
-    if (material?.name !== 'Matte black visor') return;
-    material.onBeforeCompile = shader => {
-      shader.vertexShader = 'varying vec3 visorPosition;\n' + shader.vertexShader.replace(
-        '#include <begin_vertex>', '#include <begin_vertex>\nvisorPosition = position;'
-      );
-      shader.fragmentShader = 'varying vec3 visorPosition;\n' + shader.fragmentShader.replace(
-        '#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        if (visorPosition.z > 0.045) {
-          vec2 face = visorPosition.xy - vec2(0.0, 1.85);
-          vec2 eye = vec2(abs(face.x) - 0.032, face.y - 0.022);
-          float eyes = length(vec2(eye.x, max(abs(eye.y) - 0.004, 0.0))) - 0.008;
-          float x = clamp(face.x, -0.041, 0.041);
-          float mouth = distance(face, vec2(x, -0.027 + 10.0*x*x)) - 0.0045;
-          float edge = min(eyes, mouth);
-          float aa = max(fwidth(edge), 0.0002);
-          totalEmissiveRadiance += vec3(0.21, 0.91, 1.0) * (1.0 - smoothstep(-aa, aa, edge));
-        }`
-      );
-    };
-  });
-}
 new GLTFLoader().load('assets/ai2-service-robot.glb', gltf => {
   robot.add(gltf.scene);
-  addScreenSmile(gltf.scene);
   gltf.scene.traverse(object => object.layers.enable(1));
   const findWheels = names => names.map(name => gltf.scene.getObjectByName(name)).filter(Boolean);
   driveWheels = findWheels(['DriveWheelLeft', 'DriveWheelRight']);
@@ -131,16 +106,28 @@ new GLTFLoader().load('assets/ai2-service-robot.glb', gltf => {
   robotReady = true;
   $('follow').disabled = false;
   $('eagle').disabled = false;
-  setFollow(true, 'close');
+  if (!document.body.classList.contains('map2d-active')) setFollow(true, 'close');
 },undefined,()=>{$('error').hidden=false;$('error').textContent='机器人模型加载失败，请刷新页面。';});
 const eagleRing=new THREE.Mesh(new THREE.RingGeometry(.72,.86,48),new THREE.MeshBasicMaterial({color:0x2575e8,transparent:true,opacity:.9,side:THREE.DoubleSide}));eagleRing.rotation.x=-Math.PI/2;eagleRing.position.y=.08;eagleRing.visible=false;eagleRing.layers.enable(1);robot.add(eagleRing);
+// The model faces local +Z. Orbit from behind it, aimed just above its centre.
+const rearAimHeight = 1.24;
+const rearOffset = new THREE.Vector3(0, 2.8, -6.8);
+const worldUp = new THREE.Vector3(0, 1, 0);
+const orbitOffset = new THREE.Vector3();
 function setFollow(on,mode='close'){
   followRobot=on;followMode=on?mode:null;$('canvas').dataset.followMode=followMode||'none';
   controls.enablePan=!on;controls.minDistance=on?5:2.2;controls.maxDistance=on?(mode==='eagle'?40:15):190;
   const close=on&&mode==='close',eagle=on&&mode==='eagle';
   $('follow').setAttribute('aria-pressed',String(close));$('follow').setAttribute('aria-label',close?'退出跟随':'跟随机器人');$('follow').textContent=close?'退出跟随':'跟随机器人';
   $('eagle').setAttribute('aria-pressed',String(eagle));$('eagle').textContent=eagle?'退出鹰眼':'鹰眼跟随';eagleRing.visible=eagle;
-  if(on){controls.target.copy(robot.position).add(new THREE.Vector3(0,close ? .85 : 0,0));camera.position.copy(controls.target).add(eagle?new THREE.Vector3(0,30,.03):new THREE.Vector3(3.7,7.1,5.1));controls.update();}
+  if (on) {
+    controls.target.copy(robot.position);
+    if (close) controls.target.y += rearAimHeight;
+    if (close) orbitOffset.copy(rearOffset).applyAxisAngle(worldUp, robot.rotation.y);
+    else orbitOffset.set(0, 30, .03);
+    camera.position.copy(controls.target).add(orbitOffset);
+    controls.update();
+  }
 }
 $('follow').onclick=()=>{if(robotReady)setFollow(!(followRobot&&followMode==='close'),'close')};
 $('eagle').onclick=()=>{if(robotReady)setFollow(!(followRobot&&followMode==='eagle'),'eagle')};
@@ -236,9 +223,15 @@ function frame(t){
   const dt=lastFrame?Math.min((t-lastFrame)/1000,.1):0;lastFrame=t;
   if(playing){if(last)progress=totalDistance>0?Math.min(1,progress+(t-last)/1000*speed/totalDistance):1;last=t;drawProgress();if(progress>=1)setPlaying(false)}
   const diff=Math.atan2(Math.sin(targetYaw-robot.rotation.y),Math.cos(targetYaw-robot.rotation.y));
-  robot.rotation.y+=diff*(1-Math.exp(-7*dt));
+  const turn = diff * (1 - Math.exp(-7 * dt));
+  robot.rotation.y += turn;
+  if (followMode === 'close' && turn !== 0) {
+    // Rotate the current orbit so manual zoom and drag survive a turn.
+    orbitOffset.subVectors(camera.position, controls.target).applyAxisAngle(worldUp, turn);
+    camera.position.copy(controls.target).add(orbitOffset);
+  }
   if(followRobot){
-    const desired=robot.position.clone().add(new THREE.Vector3(0,followMode==='close'?.85:0,0));
+    const desired=robot.position.clone().add(new THREE.Vector3(0,followMode === 'close' ? rearAimHeight : 0,0));
     const delta=desired.sub(controls.target);const distance=delta.length();
     const factor=distance>.6?Math.max(1-Math.exp(-9*dt),1-.6/distance):1-Math.exp(-9*dt);
     delta.multiplyScalar(factor);camera.position.add(delta);controls.target.add(delta);
