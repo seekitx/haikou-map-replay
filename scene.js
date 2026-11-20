@@ -91,8 +91,34 @@ function rollWheels(distance) {
   for (const wheel of casters) wheel.rotation.x = distance / .039;
   $('canvas').dataset.wheelAngle = (distance / .101).toFixed(5);
 }
+function addScreenSmile(model) {
+  const expression = new THREE.Group();
+  expression.name = 'robot-screen-smile';
+  const glow = new THREE.MeshBasicMaterial({ color: 0x7ef6ff, toneMapped: false });
+  const surfacePoint = (x, y) => {
+    const depth = .08112 * Math.sqrt(Math.max(.001, 1 - (x / .08736) ** 2 - ((y - 1.723) / .11544) ** 2));
+    return new THREE.Vector3(x, y, depth + .006);
+  };
+  const eyeGeometry = new THREE.SphereGeometry(.0065, 16, 10);
+  for (const x of [-.03, .03]) {
+    const eye = new THREE.Mesh(eyeGeometry, glow);
+    eye.position.copy(surfacePoint(x, 1.755));
+    eye.position.z += .002;
+    expression.add(eye);
+  }
+  const smile = new THREE.CatmullRomCurve3([
+    [-.037, 1.688], [-.028, 1.676], [-.014, 1.668], [0, 1.665],
+    [.014, 1.668], [.028, 1.676], [.037, 1.688]
+  ].map(([x, y]) => surfacePoint(x, y)));
+  const mouth = new THREE.Mesh(new THREE.TubeGeometry(smile, 36, .0026, 8, false), glow);
+  mouth.renderOrder = 5;
+  expression.add(mouth);
+  expression.traverse(object => object.layers.enable(1));
+  model.add(expression);
+}
 new GLTFLoader().load('assets/ai2-service-robot.glb', gltf => {
   robot.add(gltf.scene);
+  addScreenSmile(gltf.scene);
   gltf.scene.traverse(object => object.layers.enable(1));
   const findWheels = names => names.map(name => gltf.scene.getObjectByName(name)).filter(Boolean);
   driveWheels = findWheels(['DriveWheelLeft', 'DriveWheelRight']);
@@ -106,15 +132,16 @@ new GLTFLoader().load('assets/ai2-service-robot.glb', gltf => {
   robotReady = true;
   $('follow').disabled = false;
   $('eagle').disabled = false;
+  setFollow(true, 'close');
 },undefined,()=>{$('error').hidden=false;$('error').textContent='机器人模型加载失败，请刷新页面。';});
 const eagleRing=new THREE.Mesh(new THREE.RingGeometry(.72,.86,48),new THREE.MeshBasicMaterial({color:0x2575e8,transparent:true,opacity:.9,side:THREE.DoubleSide}));eagleRing.rotation.x=-Math.PI/2;eagleRing.position.y=.08;eagleRing.visible=false;eagleRing.layers.enable(1);robot.add(eagleRing);
 function setFollow(on,mode='close'){
   followRobot=on;followMode=on?mode:null;$('canvas').dataset.followMode=followMode||'none';
   controls.enablePan=!on;controls.minDistance=on?5:2.2;controls.maxDistance=on?(mode==='eagle'?40:15):190;
   const close=on&&mode==='close',eagle=on&&mode==='eagle';
-  $('follow').setAttribute('aria-pressed',String(close));$('follow').textContent=close?'退出跟随':'跟随机器人';
+  $('follow').setAttribute('aria-pressed',String(close));$('follow').setAttribute('aria-label',close?'退出跟随':'跟随机器人');$('follow').textContent=close?'退出跟随':'跟随机器人';
   $('eagle').setAttribute('aria-pressed',String(eagle));$('eagle').textContent=eagle?'退出鹰眼':'鹰眼跟随';eagleRing.visible=eagle;
-  if(on){controls.target.copy(robot.position).add(new THREE.Vector3(0,close ? .85 : 0,0));camera.position.copy(controls.target).add(eagle?new THREE.Vector3(0,30,.03):new THREE.Vector3(2.4,4.6,3.3));controls.update();}
+  if(on){controls.target.copy(robot.position).add(new THREE.Vector3(0,close ? .85 : 0,0));camera.position.copy(controls.target).add(eagle?new THREE.Vector3(0,30,.03):new THREE.Vector3(3.7,7.1,5.1));controls.update();}
 }
 $('follow').onclick=()=>{if(robotReady)setFollow(!(followRobot&&followMode==='close'),'close')};
 $('eagle').onclick=()=>{if(robotReady)setFollow(!(followRobot&&followMode==='eagle'),'eagle')};
@@ -200,8 +227,8 @@ function updateCameraLabels(){const radius=camera.position.distanceTo(controls.t
 function setCamera(tilt, angle, distance){let spherical=new THREE.Spherical(Math.max(controls.minDistance,Math.min(controls.maxDistance,distance)),Math.max(.001,Math.min(controls.maxPolarAngle,tilt*Math.PI/180)),angle*Math.PI/180);camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(spherical));controls.update();updateCameraLabels()}
 controls.addEventListener('change',updateCameraLabels);
 ['tilt','rotation','distance'].forEach(id=>$(id).addEventListener('input',()=>setCamera(Number($('tilt').value),Number($('rotation').value),defaultDistance*Number($('distance').value)/100)));
-function selectView(is3d){setFollow(false);$('view-3d').setAttribute('aria-pressed',String(is3d));$('view-2d').setAttribute('aria-pressed',String(!is3d));if(is3d)controls.reset();else setCamera(0,Number($('rotation').value),camera.position.distanceTo(controls.target));updateCameraLabels()}
-$('view-3d').onclick=()=>selectView(true);$('view-2d').onclick=()=>selectView(false);$('camera-reset').onclick=()=>selectView(true);$('reset').onclick=()=>selectView(true);
+function selectView(is3d){if(is3d)setFollow(true,'close');else{setFollow(false);setCamera(0,Number($('rotation').value),camera.position.distanceTo(controls.target));}$('view-3d').setAttribute('aria-pressed',String(is3d));$('view-2d').setAttribute('aria-pressed',String(!is3d));updateCameraLabels()}
+$('view-3d').onclick=()=>selectView(true);$('view-2d').onclick=()=>selectView(false);$('camera-reset').onclick=()=>selectView(true);$('reset').onclick=()=>{setFollow(false);controls.reset();updateCameraLabels()};
 $('zoom-in').onclick=()=>setCamera(controls.getPolarAngle()*180/Math.PI,controls.getAzimuthalAngle()*180/Math.PI,camera.position.distanceTo(controls.target)*.8);
 $('zoom-out').onclick=()=>setCamera(controls.getPolarAngle()*180/Math.PI,controls.getAzimuthalAngle()*180/Math.PI,camera.position.distanceTo(controls.target)*1.25);
 function resize(){let w=stage.clientWidth,h=stage.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
