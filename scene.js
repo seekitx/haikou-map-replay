@@ -92,29 +92,28 @@ function rollWheels(distance) {
   $('canvas').dataset.wheelAngle = (distance / .101).toFixed(5);
 }
 function addScreenSmile(model) {
-  const expression = new THREE.Group();
-  expression.name = 'robot-screen-smile';
-  const glow = new THREE.MeshBasicMaterial({ color: 0x7ef6ff, toneMapped: false });
-  const surfacePoint = (x, y) => {
-    const depth = .08112 * Math.sqrt(Math.max(.001, 1 - (x / .08736) ** 2 - ((y - 1.723) / .11544) ** 2));
-    return new THREE.Vector3(x, y, depth + .006);
-  };
-  const eyeGeometry = new THREE.SphereGeometry(.0065, 16, 10);
-  for (const x of [-.03, .03]) {
-    const eye = new THREE.Mesh(eyeGeometry, glow);
-    eye.position.copy(surfacePoint(x, 1.755));
-    eye.position.z += .002;
-    expression.add(eye);
-  }
-  const smile = new THREE.CatmullRomCurve3([
-    [-.037, 1.688], [-.028, 1.676], [-.014, 1.668], [0, 1.665],
-    [.014, 1.668], [.028, 1.676], [.037, 1.688]
-  ].map(([x, y]) => surfacePoint(x, y)));
-  const mouth = new THREE.Mesh(new THREE.TubeGeometry(smile, 36, .0026, 8, false), glow);
-  mouth.renderOrder = 5;
-  expression.add(mouth);
-  expression.traverse(object => object.layers.enable(1));
-  model.add(expression);
+  // Paint on the visor in model coordinates so the expression follows its curvature.
+  model.traverse(({ material }) => {
+    if (material?.name !== 'Matte black visor') return;
+    material.onBeforeCompile = shader => {
+      shader.vertexShader = 'varying vec3 visorPosition;\n' + shader.vertexShader.replace(
+        '#include <begin_vertex>', '#include <begin_vertex>\nvisorPosition = position;'
+      );
+      shader.fragmentShader = 'varying vec3 visorPosition;\n' + shader.fragmentShader.replace(
+        '#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        if (visorPosition.z > 0.045) {
+          vec2 face = visorPosition.xy - vec2(0.0, 1.85);
+          vec2 eye = vec2(abs(face.x) - 0.032, face.y - 0.022);
+          float eyes = length(vec2(eye.x, max(abs(eye.y) - 0.004, 0.0))) - 0.008;
+          float x = clamp(face.x, -0.041, 0.041);
+          float mouth = distance(face, vec2(x, -0.027 + 10.0*x*x)) - 0.0045;
+          float edge = min(eyes, mouth);
+          float aa = max(fwidth(edge), 0.0002);
+          totalEmissiveRadiance += vec3(0.21, 0.91, 1.0) * (1.0 - smoothstep(-aa, aa, edge));
+        }`
+      );
+    };
+  });
 }
 new GLTFLoader().load('assets/ai2-service-robot.glb', gltf => {
   robot.add(gltf.scene);
